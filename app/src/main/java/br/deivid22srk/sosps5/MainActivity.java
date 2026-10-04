@@ -238,7 +238,8 @@ public class MainActivity extends Activity {
                 resultText.setTextColor(Color.rgb(0x00, 0x70, 0x20));
                 Log.i(TAG, "SUCESSO: SOS_POC_STATIC_OK detectado (exit=" + exit + ")");
             } else {
-                resultText.setText("FALHA — ver saída abaixo (código de saída: " + exit + ").");
+                resultText.setText("FALHA — ver saída abaixo (código de saída: " + exit + ")."
+                        + explainSignalExit(exit));
                 resultText.setTextColor(Color.rgb(0xB0, 0x00, 0x00));
                 Log.e(TAG, "FALHA: marcador ausente, exit=" + exit);
             }
@@ -256,6 +257,31 @@ public class MainActivity extends Activity {
 
             runButton.setEnabled(true);
         });
+    }
+
+    /**
+     * Exit codes >= 128 mean the process was killed by signal (exit - 128).
+     * Translating them to plain PT-BR makes on-device reports actionable
+     * (e.g. 159 = 128 + 31 = SIGSYS = seccomp-blocked syscall on Android).
+     */
+    private String explainSignalExit(int exit) {
+        if (exit < 128) {
+            return "";
+        }
+        int sig = exit - 128;
+        String name;
+        String hint;
+        switch (sig) {
+            case 4:  name = "SIGILL";  hint = "instrução ilegal (CPU não suportou o código)"; break;
+            case 6:  name = "SIGABRT"; hint = "abort() — assertion/erro interno"; break;
+            case 7:  name = "SIGBUS";  hint = "acesso inválido à memória (bus error)"; break;
+            case 9:  name = "SIGKILL"; hint = "processo morto pelo sistema (ex.: falta de memória)"; break;
+            case 11: name = "SIGSEGV"; hint = "falha de segmentação (acesso inválido à memória)"; break;
+            case 13: name = "SIGPIPE"; hint = "pipe fechado"; break;
+            case 31: name = "SIGSYS";  hint = "syscall bloqueado pelo seccomp do Android — confira se o box64 do APK contém o patch seccomp-safe (patches/0001)"; break;
+            default: return " O processo foi morto pelo sinal " + sig + ".";
+        }
+        return " O processo foi morto pelo sinal " + sig + " (" + name + ") — " + hint + ".";
     }
 
     /** Returns a clear PT-BR message naming the missing file. */

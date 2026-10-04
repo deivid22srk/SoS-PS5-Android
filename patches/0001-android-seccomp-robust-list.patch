@@ -1,0 +1,50 @@
+diff --git a/src/emu/x64syscall.c b/src/emu/x64syscall.c
+index e5f29a7..5b8f9b3 100644
+--- a/src/emu/x64syscall.c
++++ b/src/emu/x64syscall.c
+@@ -331,8 +331,14 @@ static const scwrap_t syscallwrap[] = {
+     [269] = {__NR_faccessat, 3},
+     [270] = {__NR_pselect6, 6},
+     [272] = {__NR_unshare, 1},
++#ifndef __ANDROID__
++    /* BOX64_ANDROID_SECCOMP_STUB: on Android, set_robust_list/get_robust_list
++     * (arm64 syscalls 99/100) are NOT in the seccomp allowlist for untrusted
++     * apps; a direct passthrough kills the process with SIGSYS (signal 31).
++     * They are handled by dedicated stub cases in the switches below. */
+     [273] = {__NR_set_robust_list, 2},
+     [274] = {__NR_get_robust_list, 3},
++#endif
+     [280] = {__NR_utimensat, 4},
+     #ifdef NOALIGN
+     [281] = {__NR_epoll_pwait, 5},
+@@ -1057,6 +1063,16 @@ void EXPORT x64Syscall_linux(x64emu_t *emu)
+         case 317:   // sys_seccomp
+             R_RAX = 0;  // ignoring call
+             break;
++#ifdef __ANDROID__
++        case 273:   // BOX64_ANDROID_SECCOMP_STUB: sys_set_robust_list
++            // Android seccomp blocks this syscall for untrusted apps; guest
++            // glibc calls it during NPTL init. Fake success and carry on.
++            S_RAX = 0;
++            break;
++        case 274:   // BOX64_ANDROID_SECCOMP_STUB: sys_get_robust_list
++            S_RAX = -ENOSYS;
++            break;
++#endif
+         case 334: // It is helpeful to run static binary
+             R_RAX = -ENOSYS;
+             break;
+@@ -1439,6 +1455,13 @@ long EXPORT my_syscall(x64emu_t *emu)
+         #endif
+         case 317:   // sys_seccomp
+             return 0;  // ignoring call
++#ifdef __ANDROID__
++        case 273:   // BOX64_ANDROID_SECCOMP_STUB: sys_set_robust_list
++            return 0;
++        case 274:   // BOX64_ANDROID_SECCOMP_STUB: sys_get_robust_list
++            errno = ENOSYS;
++            return -1;
++#endif
+         #ifndef __NR_faccessat2
+         case 439:
+             return faccessat(S_ESI, (void*)R_RDX, (mode_t)R_RCX, S_R8d);

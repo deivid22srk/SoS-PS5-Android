@@ -17,8 +17,12 @@ Critérios de aceite:
 2. [x] **CONCLUÍDO (mesmo run)** — APK `poc` compilado no CI: box64 (NDK r29/bionic,
    `ARM_DYNAREC=ON`, flexível page sizes) + payload estático empacotados como
    jniLibs; artifact `SoS-PS5-Android-PoC-debug.apk` (15,3 MB) publicado.
-3. [ ] **PENDENTE — aparelho do usuário**: instalar o APK, rodar o teste na tela e
-   colar `adb logcat -s SOSBox64:V` (passos em `docs/ON_DEVICE_TEST.md`).
+3. [ ] **PENDENTE — aparelho do usuário (reteste com APK v2)**: 1º teste falhou com
+   exit 159 (SIGSYS = syscall arm64 99 `set_robust_list` bloqueado pelo seccomp do
+   Android — ver `docs/PROGRESS.md` § "Fix on-device #1"). Corrigido via
+   `patches/0001-android-seccomp-robust-list.patch` (box64 pinado em `abfb8c3`).
+   Instalar o APK novo, rodar o teste na tela e colar `adb logcat -s SOSBox64:V`
+   (passos em `docs/ON_DEVICE_TEST.md`).
 
 Histórico de status:
 - Task 1-a (2026-10-04): payloads + job `box64-arm64` entregues; verificação local em x86_64 OK; aguardava CI.
@@ -28,6 +32,11 @@ Histórico de status:
 - Fix CI (2026-10-04): branch do box64 upstream mudou de `master` para `main`.
 - Run 37220048527 (2026-10-04): **verde** — critérios 1 e 2 concluídos (evidência acima);
   critério 3 aguarda o aparelho do usuário.
+- On-device #1 (2026-10-04): teste no aparelho (motorola edge 30 fusion, Android 14)
+  FALHOU com exit 159 — SIGSYS/seccomp no syscall arm64 99 (`set_robust_list`) que o
+  box64 repassava direto ao kernel. Fix: patch seccomp-safe (`patches/0001`), box64
+  pinado em `abfb8c3b2fad`, app decodifica sinais ≥ 128. Aguardando reteste com o
+  APK v2.
 
 Nota (Task 1-a): `payloads/x86_64/hello_static.c` é fonte canônica COMPARTILHADA
 com a task 1-b (APK usa o mesmo payload como `libpayload64.so`). Os marcadores

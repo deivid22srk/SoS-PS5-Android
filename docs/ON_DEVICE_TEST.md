@@ -102,3 +102,23 @@ informações de tradução/execução).
 
 Depois do teste, desinstale normalmente (ou deixe instalado — o app não roda nada em
 background).
+
+## 6. Se falhar — como o app ajuda no diagnóstico
+
+O app decodifica códigos de saída ≥ 128 (processo morto por sinal `exit − 128`):
+
+| Código | Sinal | Significado provável |
+|---|---|---|
+| 136 | SIGFPE(8) | divisão por zero / float inválido no guest |
+| 139 | SIGSEGV(11) | acesso inválido à memória (bug de tradução/mapeamento) |
+| 134 | SIGABRT(6) | abort() — assertion do box64 ou do guest |
+| 137 | SIGKILL(9) | morto pelo sistema (ex.: OOM) |
+| 159 | SIGSYS(31) | **syscall bloqueado pelo seccomp do Android** — confira se o APK foi gerado com `patches/0001-android-seccomp-robust-list.patch` (box64 pinado + patch; ver `scripts/ci-build-box64.sh`) |
+
+Histórico: o 1º teste on-device (APK v1) morreu exatamente com 159 —
+`set_robust_list` (x86-64 273 → arm64 99) repassado direto ao kernel. Corrigido no
+APK v2; se um APK novo ainda reportar 159, o APK não contém o patch (verifique no
+log do CI a linha `patch applied cleanly on box64 abfb8c3...`).
+
+Linhas de logcat com `avc: denied ... name="tests"` e `sh: lscpu: inaccessible or not
+found` são ruído conhecido do box64 no Android (não fatais).

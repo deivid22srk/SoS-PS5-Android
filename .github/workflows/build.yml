@@ -11,10 +11,15 @@
 # static x86-64 payload packaged as arm64-v8a jniLibs, executed on-device
 # via ProcessBuilder.
 #
-# box64 is NEVER committed to this repo (decision D5): it is checked out from
-# upstream (ptitSeb/box64) at build time, exactly like the CI of the upstream
-# project does for aarch64 hosts (-DARM_DYNAREC=ON is the canonical flag set
-# used by box64's own release workflow for generic ARM64).
+# box64 is NEVER committed to this repo (decision D5): it is fetched from
+# upstream (ptitSeb/box64) at build time, PINNED to a tested SHA, with the
+# repo-local patch patches/0001-android-seccomp-robust-list.patch applied.
+# The patch stubs set_robust_list/get_robust_list under __ANDROID__ only
+# (arm64 syscalls 99/100 are blocked by seccomp for untrusted apps — that is
+# what killed the first on-device test with SIGSYS/exit 159). On the Linux
+# ARM64 runner the patched code compiles out and behavior is unchanged.
+# -DARM_DYNAREC=ON is the canonical flag set used by box64's own release
+# workflow for generic ARM64 hosts.
 
 name: build
 
@@ -35,12 +40,25 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
-      - name: Checkout box64 upstream (ptitSeb/box64 @ main)
+      - name: Checkout box64 upstream (ptitSeb/box64 @ pinned SHA)
         uses: actions/checkout@v4
         with:
           repository: ptitSeb/box64
-          ref: main
+          ref: abfb8c3b2faddf2273d8ebe532c362d86bfa0356
           path: box64-src
+
+      - name: Apply Android seccomp-safe patch to box64 (no-op on Linux builds)
+        run: |
+          set -e
+          if grep -q "BOX64_ANDROID_SECCOMP_STUB" box64-src/src/emu/x64syscall.c; then
+            echo "patch already present upstream — skipping"
+          else
+            git -C box64-src apply --whitespace=nowarn \
+              "$GITHUB_WORKSPACE/patches/0001-android-seccomp-robust-list.patch"
+            grep -q "BOX64_ANDROID_SECCOMP_STUB" box64-src/src/emu/x64syscall.c
+            echo "patch applied cleanly (Android-gated; Linux code path unchanged)"
+          fi
+          echo "BOX64_PATCHED=1" >> "$GITHUB_ENV"
 
       - name: Install toolchain (cmake, ninja, amd64 cross gcc + glibc)
         run: |
@@ -53,7 +71,8 @@ jobs:
             echo ""
             echo "| item | value |"
             echo "|---|---|"
-            echo "| box64 git SHA | \`$BOX64_SHA\` |"
+            echo "| box64 git SHA | \`$BOX64_SHA\` (pinned) |"
+            echo "| android seccomp patch | applied (no-op on Linux) |"
             echo "| runner | \`${RUNNER_OS} ${RUNNER_ARCH}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
           sudo apt-get update

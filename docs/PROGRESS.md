@@ -6,6 +6,70 @@ executado de verdade (comando + saída) ou está explicitamente marcado como
 
 ---
 
+## Fix on-device #1 — FALHA exit 159 (SIGSYS / set_robust_list) → patch seccomp-safe (2026-10-04)
+
+### Evidência do aparelho (log do usuário, pastebin 1ZCBL8fA)
+
+- Aparelho identificado pelo log: **motorola edge 30 fusion (tundra)**, Android **14**
+  (SDK 34), `arm64-v8a`, GPU **Adreno** (Snapdragon 888+). O app em si funcionou:
+  diagnóstico correto, `libbox64.so`/`libpayload64.so` presentes e processo lançado
+  (`I SOSBox64: Executando: .../libbox64.so .../libpayload64.so (BOX64_LOG=DEBUG)`).
+- Crash: `F libc: Fatal signal 31 (SIGSYS), code 1 (SYS_SECCOMP), syscall 99` no tid do
+  guest (`libpayload64.so`); backtrace `libc.so (syscall+36)` ←
+  `libbox64.so (x64Syscall_linux+752)` ← código guest JIT. O app reportou
+  `FALHA: marcador ausente, exit=159` (159 = 128 + 31, morto por sinal).
+- **Causa raiz:** a glibc guest (payload estático) chama `set_robust_list`
+  (x86-64 syscall **273**) na inicialização da NPTL; `x64Syscall_linux` repassa direto
+  via `syscallwrap[273] = {__NR_set_robust_list, 2}`; no arm64 `__NR_set_robust_list`
+  = **99**, que NÃO está na allowlist seccomp de `untrusted_app` → o kernel mata o
+  processo com SIGSYS. (`rseq`/x86-64 **334** já é tratado upstream com `-ENOSYS`
+  no `case 334` — não é problema.) Números conferidos em
+  `/usr/include/aarch64-linux-gnu/asm/unistd_64.h` (99/100/293) e unistd_64 x86_64
+  (273/274/334). Clone local do box64 == upstream main `abfb8c3b2fad` (sem diff —
+  o upstream NÃO contorna isso; o patch é nosso).
+- Ruído não-fatal no log (ignorar): avc `denied { search } name="tests"`
+  (`shell_test_data_file`) ×3 e `sh: lscpu: inaccessible or not found` (box64 invoca
+  `lscpu` via shell no Android).
+
+### Fix aplicado (`patches/0001-android-seccomp-robust-list.patch`)
+
+- `src/emu/x64syscall.c` do box64: entradas `[273]`/`[274]` da `syscallwrap[]`
+  agora só existem `#ifndef __ANDROID__`; casos explícitos sob `#ifdef __ANDROID__`:
+  `case 273 → 0` (fake success — glibc segue a init) e `case 274 → -ENOSYS`, nos DOIS
+  switches (`x64Syscall_linux` e `my_syscall`). Marcador `BOX64_ANDROID_SECCOMP_STUB`
+  para detecção idempotente. Em builds não-Android o código compila fora
+  (comportamento do Linux inalterado).
+- CI: box64 agora **PINADO** em `abfb8c3b2faddf2273d8ebe532c362d86bfa0356`
+  (`build.yml` `ref:` + script faz fetch-by-SHA com fallback para clone de main +
+  WARNING); patch aplicado nos 2 jobs (`git apply` idempotente; falha ⇒
+  `BOX64_PATCH_FAILED` antes de gastar minutos de build).
+- App: `MainActivity.explainSignalExit()` — exit ≥ 128 agora é decodificado em
+  PT-BR (ex.: 159 → "sinal 31 (SIGSYS) — syscall bloqueado pelo seccomp do Android").
+- Nota de projeto: o patch é cumulativo — o jogo real (glibc dinâmico) também chama
+  `set_robust_list` na init do libc; sem este fix, M2+ morreria igual no aparelho.
+
+### Validação local (container sem NDK/SDK)
+
+- `git apply --check` do patch em worktree limpo do upstream pinado: OK; a sequência
+  exata do CI (git init + fetch-by-SHA + checkout FETCH_HEAD) foi provada localmente
+  contra o GitHub.
+- `gcc -fsyntax-only` de `src/emu/x64syscall.c`: (a) host Linux sem `__ANDROID__`
+  → exit 0; (b) com `-D__ANDROID__ -DANDROID` → exit 0 (o ramo do stub compila;
+  a compilação real NDK fica no job `apk`).
+- `bash -n` no script; PyYAML no `build.yml` + strings obrigatórias; 0 duplicatas de
+  `case 273/274` nos switches; balanceamento de chaves do Java OK (sem javac no
+  container — a compilação real fica no job `apk`).
+
+### Risco novo registrado (para M5)
+
+- Aparelho = Adreno 660 (Snapdragon 888+). O log mostra
+  `Updatable production driver is not supported on the device`. Adreno 660 expõe
+  Vulkan 1.1/1.2 (1.3 não confirmado) — o core SoS-PS5 exige **Vulkan 1.3**. Risco a
+  medir no aparelho na hora do M5 (query via `PackageManager`/vkEnumerate); NÃO
+  bloqueia M1–M4.
+
+---
+
 ## Task 1-c — Revisão crítica independente do M1 (2026-10-04)
 
 Revisor externo (não escreveu o código). Escopo: workflow, script de CI, payloads,

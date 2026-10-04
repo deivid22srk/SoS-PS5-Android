@@ -83,14 +83,48 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3) Clone upstream box64 (never committed to this repo — decision D5)
+# 3) Fetch upstream box64 at a PINNED commit (decision D5: never committed here;
+#    pinned for reproducibility) and apply the Android seccomp-safe patch.
+#
+#    The patch stubs set_robust_list/get_robust_list under __ANDROID__ (arm64
+#    syscalls 99/100 are NOT in the seccomp allowlist for untrusted apps; the
+#    direct passthrough killed the guest with SIGSYS = exit 159 on the user's
+#    motorola edge 30 fusion / Android 14). On non-Android builds the patch
+#    compiles out completely (Linux CI path is unchanged).
 # ---------------------------------------------------------------------------
-log "Cloning ptitSeb/box64 (main) into $BOX64_SRC"
+BOX64_PINNED_SHA="abfb8c3b2faddf2273d8ebe532c362d86bfa0356"
+BOX64_PATCH="$REPO_ROOT/patches/0001-android-seccomp-robust-list.patch"
+
+log "Fetching ptitSeb/box64 @ $BOX64_PINNED_SHA into $BOX64_SRC"
 rm -rf "$BOX64_SRC"
-git clone --depth 1 --branch main https://github.com/ptitSeb/box64.git "$BOX64_SRC" \
-    || die "box64 clone failed"
-BOX64_COMMIT="$(git -C "$BOX64_SRC" rev-parse --short HEAD || echo unknown)"
+if git init -q "$BOX64_SRC" \
+   && git -C "$BOX64_SRC" remote add origin https://github.com/ptitSeb/box64.git \
+   && git -C "$BOX64_SRC" fetch -q --depth 1 origin "$BOX64_PINNED_SHA" \
+   && git -C "$BOX64_SRC" checkout -q --detach FETCH_HEAD; then
+    echo "box64 fetched at pinned SHA: $BOX64_PINNED_SHA"
+else
+    echo "!!! fetch-by-SHA failed — falling back to a shallow clone of main (drift possible)"
+    rm -rf "$BOX64_SRC"
+    git clone --depth 1 --branch main https://github.com/ptitSeb/box64.git "$BOX64_SRC" \
+        || die "box64 clone failed"
+fi
+BOX64_COMMIT="$(git -C "$BOX64_SRC" rev-parse HEAD || echo unknown)"
 echo "box64 commit: $BOX64_COMMIT"
+if [ "$BOX64_COMMIT" != "$BOX64_PINNED_SHA" ]; then
+    echo "WARNING: box64 HEAD ($BOX64_COMMIT) differs from the pinned SHA ($BOX64_PINNED_SHA)"
+fi
+
+log "Applying Android seccomp-safe patch to box64"
+[ -f "$BOX64_PATCH" ] || die "BOX64_PATCH_FAILED: patch file missing: $BOX64_PATCH"
+if grep -q "BOX64_ANDROID_SECCOMP_STUB" "$BOX64_SRC/src/emu/x64syscall.c"; then
+    echo "patch already present (upstream fix or previously applied) — skipping"
+else
+    git -C "$BOX64_SRC" apply --whitespace=nowarn "$BOX64_PATCH" \
+        || die "BOX64_PATCH_FAILED: git apply failed on box64 $BOX64_COMMIT"
+    grep -q "BOX64_ANDROID_SECCOMP_STUB" "$BOX64_SRC/src/emu/x64syscall.c" \
+        || die "BOX64_PATCH_FAILED: marker BOX64_ANDROID_SECCOMP_STUB missing after apply"
+    echo "patch applied cleanly on box64 $BOX64_COMMIT"
+fi
 
 # ---------------------------------------------------------------------------
 # 4) Build box64 for bionic (PIE executable, arm64-v8a, android-28)
