@@ -216,6 +216,20 @@ seção 6 podem aparecer também neste teste.
 
 ### 7.6 E depois?
 
+**Resultado (2026-10-05, 1º teste on-device): SUCESSO — M2 CONCLUÍDO.**
+motorola edge 30 fusion (Android 14, SDK 34, arm64-v8a), APK do run
+[37230357330](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37230357330)
+(sha 7ce8ee7): diagnóstico de abertura confirma as 3 jniLibs presentes
+(`libbox64.so`/`libpayload64.so`/`libanyhost64.so`); host executado como
+`libbox64.so libanyhost64.so --game-dir <filesDir>/game (BOX64_LOG=DEBUG)`;
+logcat mostra `SOS_HOST_STARTED` → `SOS_HOST_SDL2_OK driver=offscreen` →
+texto PT-BR → `SOS_HOST_MISSING_GAME_FILES reason=no-eboot` e o veredito do
+app `SUCESSO (M2): missing game files atingido (exit=1, SOS_HOST_SDL2_OK
+driver=offscreen)`. **Zero** `Fatal signal`/SIGSEGV/SIGSYS no log; o ruído
+conhecido (`avc: denied`, `sh: lscpu`) apareceu e foi não fatal, exatamente
+como previsto nas seções 6 e 7.5. Evidência bruta:
+`docs/evidence/m2-device-logcat-2026-10-05.txt`.
+
 Com o M2 verde no aparelho, o próximo passo (marco futuro) é prover os arquivos do
 jogo descriptografados (`eboot.elf`/`eboot.bin`, `sce_sys`, `Media`) no diretório do
 app — aí o mesmo host avança para `SOS_HOST_VALIDATE_OK` e o caminho do relinker.

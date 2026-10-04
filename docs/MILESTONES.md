@@ -48,7 +48,7 @@ com a task 1-b (APK usa o mesmo payload como `libpayload64.so`). Os marcadores
 podem ser removidos/renomeados (colisão 1-a×1-b já ocorrida e mesclada — ver
 `docs/PROGRESS.md`).
 
-## M2 — Núcleo AnyPS5 em Linux x86-64 `[~]`
+## M2 — Núcleo AnyPS5 em Linux x86-64 `[x]`
 
 **Objetivo (reformulado — ver PLAN.md):** host AnyPS5 compila e roda em Linux x86-64
 (relinker sem `--windows` = saída Linux nativa; entrada de host não-Win32 com SDL2),
@@ -84,11 +84,29 @@ Critérios de aceite:
    driver=offscreen`, exit 1 limpo, nenhum `Fatal signal`
    (`HOST_UNDER_BOX64_PASSED`); smokes M1 de regressão PASS (estático, dinâmico)
    e relinker sob box64 limpo (usage, exit 1).
-3. [ ] APK de teste executa o host no aparelho (motorola edge 30 fusion, Android 14):
-   veredito verde do app (marker + exit 1 + SDL2 OK, sem crash no logcat).
-   APK do run 37230357330 pronto (18,6 MB, 3 jniLibs) — aguardando o usuário.
+3. [x] **CONCLUÍDO (2026-10-05, 1º teste on-device)** — motorola edge 30 fusion
+   (Android 14, SDK 34, arm64-v8a), APK do run 37230357330: diagnóstico abertura
+   confirma `libbox64.so`/`libpayload64.so`/`libanyhost64.so` presentes; app
+   reporta `SUCESSO (M2): missing game files atingido (exit=1,
+   SOS_HOST_SDL2_OK driver=offscreen)`; logcat mostra `SOS_HOST_STARTED` →
+   `SOS_HOST_SDL2_OK driver=offscreen` → `SOS_HOST_MISSING_GAME_FILES
+   reason=no-eboot`, **zero** `Fatal signal`/SIGSEGV/SIGSYS (ruído conhecido
+   `avc: denied`/`lscpu` presente e não fatal, conforme previsto em
+   ON_DEVICE_TEST.md §§6-7.5). Evidência bruta:
+   `docs/evidence/m2-device-logcat-2026-10-05.txt`.
 
-## M3 — Integração de libs no runtime box64/Android `[ ]`
+Histórico de status:
+- M2-a..M2-e (2026-10-05): entregues — mapeamento/contrato (`M2-LINUX-HOST.md`),
+  `anyhost` + patch 0002, CI (`host-linux`/`box64-arm64`/`apk`), botão M2 no app,
+  revisão crítica independente GO (ver PROGRESS.md).
+- Fix-loop CI (2026-10-05, 3 iterações + matriz de debug): #1 path do relinker no
+  CMake (saída no root do build); #2 SIGSEGV do host sob dynarec ARM na init da
+  SDL2 → workaround `BOX64_DYNAREC_SAFEFLAGS=2` (KB-001, `KNOWN_BUGS.md`); #3
+  call-site Java do M1. Run 37230357330: **3/3 jobs SUCCESS**.
+- On-device #1 (2026-10-05): **SUCESSO** no aparelho do usuário — **M2
+  CONCLUÍDO** (critérios 1, 2 e 3 com execução real em CI e no aparelho).
+
+## M3 — Integração de libs no runtime box64/Android `[ ]` (próximo marco)
 
 SDL2 via wrapper (input/vídeo), FFmpeg para o ABI-alvo, fontes freetype; decisões de
 empacotamento (o que vai em jniLibs vs rootfs mínima). Critérios: no runner arm64, o

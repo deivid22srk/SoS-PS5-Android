@@ -500,10 +500,11 @@ correções documentais/higiene aplicadas e re-validadas).
 - Registrados: needs-gating (host-linux falho skipa M1 nesse run — intencional);
   F7 (reason≠no-eboot pode ficar verde no futuro — decisão M3+).
 
-## Pendente para fechar o M2
+## Pendente para fechar o M2 (RESOLVIDO — ambos os itens concluídos, ver seções abaixo)
 
-1. CI verde (critérios 1 e 2) — aguardando push.
-2. Teste no aparelho do usuário com o APK (critério 3) — `docs/ON_DEVICE_TEST.md` §7.
+1. ~~CI verde (critérios 1 e 2)~~ — CONCLUÍDO (run 37230357330, 3/3 jobs SUCCESS).
+2. ~~Teste no aparelho do usuário com o APK (critério 3)~~ — CONCLUÍDO (SUCESSO,
+   ver "On-device #1 do M2"); `docs/ON_DEVICE_TEST.md` §7.6.
 
 ### Fix CI #1 do M2 (2026-10-05) — run 37226437742 (host-linux FALHOU)
 
@@ -562,3 +563,26 @@ correções documentais/higiene aplicadas e re-validadas).
 - APK do M2 publicado (18,6 MB): `libbox64.so` + `libpayload64.so` +
   `libanyhost64.so`; arquivado em `download/SoS-PS5-Android-M2-debug.apk`.
 - Pendente para fechar o M2: critério 3 (aparelho do usuário).
+
+## On-device #1 do M2 — SUCESSO (2026-10-05) — **M2 CONCLUÍDO**
+
+- Fonte: logcat enviado pelo usuário (arquivado em
+  `docs/evidence/m2-device-logcat-2026-10-05.txt`, 71 linhas).
+- Aparelho: **motorola edge 30 fusion** (PRODUCT `tundra_g`, Android 14, SDK 34,
+  `arm64-v8a`), app `br.deivid22srk.sosps5` (targetSdk 28), APK do run
+  37230357330 (sha 7ce8ee7).
+- Diagnóstico de abertura: `libbox64.so`/`libpayload64.so`/`libanyhost64.so`
+  todos `presente`; `=== App iniciado (M1 + M2) ===`.
+- Execução: `libbox64.so libanyhost64.so --game-dir
+  /data/user/0/br.deivid22srk.sosps5/files/game (BOX64_LOG=DEBUG)`.
+- Sequência observada (tag `SOSBox64`): `SOS_HOST_STARTED` →
+  `SOS_HOST_SDL2_OK driver=offscreen` → texto PT-BR de arquivos ausentes →
+  `SOS_HOST_MISSING_GAME_FILES reason=no-eboot` → veredito do app
+  **`SUCESSO (M2): missing game files atingido (exit=1, SOS_HOST_SDL2_OK
+  driver=offscreen)`**.
+- Estabilidade: **zero** `Fatal signal`/SIGSEGV/SIGSYS; ruído conhecido
+  (`avc: denied name="tests"`, `avc: denied read dev="tmpfs"`, `sh: lscpu`)
+  presente e não fatal, exatamente como previsto em ON_DEVICE_TEST.md §§6/7.5.
+  Nenhuma ampliação do patch seccomp (0001) foi necessária para o host.
+- Fechamento: MILESTONES.md (M2 `[x]`, critérios 1-3 `[x]`), ON_DEVICE_TEST.md
+  (§7.6 resultado real), PLAN.md (risco SIGSYS do M2 fechado).

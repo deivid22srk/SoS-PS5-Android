@@ -1,0 +1,71 @@
+SDK: 34
+PRODUCT_NAME: tundra_g
+DEVICE_NAME: tundra
+BOARD_NAME: tundra
+SUPPORTED_ABIS: arm64-v8a, armeabi-v7a, armeabi
+MANUFACTURER: motorola
+BRAND: motorola
+MODEL: motorola edge 30 fusion
+
+1791144729.882 10409  6902  6902 I libc    : SetHeapTaggingLevel: tag level set to 0
+1791144729.890 10409  6902  6902 I vid22srk.sosps5: Late-enabling -Xcheck:jni
+1791144729.926 10409  6902  6902 I vid22srk.sosps5: Using generational CollectorTypeCC GC.
+1791144729.945 10409  6902  6902 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+1791144729.978 10409  6902  6902 D CompatibilityChangeReporter: Compat change id reported: 171979766; UID 10409; state: DISABLED
+1791144729.979 10409  6902  6902 D CompatibilityChangeReporter: Compat change id reported: 242716250; UID 10409; state: DISABLED
+1791144729.994 10409  6902  6902 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.test.base.jar
+1791144729.998 10409  6902  6902 D nativeloader: Configuring clns-4 for other apk /data/app/~~KrM-DlpKBp8s3OjlqtbWjw==/br.deivid22srk.sosps5-c0MRS5955aUpXQU2xPo7uw==/base.apk. target_sdk_version=28, uses_libraries=, library_path=/data/app/~~KrM-DlpKBp8s3OjlqtbWjw==/br.deivid22srk.sosps5-c0MRS5955aUpXQU2xPo7uw==/lib/arm64:/data/app/~~KrM-DlpKBp8s3OjlqtbWjw==/br.deivid22srk.sosps5-c0MRS5955aUpXQU2xPo7uw==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/br.deivid22srk.sosps5
+1791144729.998 10409  6902  6902 D nativeloader: Extending system_exposed_libraries: libbinauralrenderer_wrapper.qti.so:libhoaeffects.qti.so:libQOC.qti.so:libimgTuner_jni.motoimagetuner.so:libupdateprof.qti.so:libQOC.qti.so:libdiag_system.qti.so:libqape.qti.so:libqesdk_ndk_platform.qti.so:liblistenjni.qti.so:libjni_helper.motocameradesktop.so
+1791144730.006 10409  6902  6902 D nativeloader: Load libframework-connectivity-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity.jar: ok
+1791144730.011 10409  6902  6902 V GraphicsEnvironment: Currently set values for:
+1791144730.011 10409  6902  6902 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+1791144730.011 10409  6902  6902 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+1791144730.011 10409  6902  6902 V GraphicsEnvironment: ANGLE GameManagerService for br.deivid22srk.sosps5: false
+1791144730.011 10409  6902  6902 V GraphicsEnvironment: br.deivid22srk.sosps5 is not listed in per-application setting
+1791144730.012 10409  6902  6902 V GraphicsEnvironment: Updatable production driver is not supported on the device.
+1791144730.017 10409  6902  6902 I Typeface: updateThemeFont new=Rookery-Regular;old=sans-serif;new=Rookery-Stacked;old=
+1791144730.048 10409  6902  6902 D CompatibilityChangeReporter: Compat change id reported: 210923482; UID 10409; state: DISABLED
+1791144730.048 10409  6902  6902 D CompatibilityChangeReporter: Compat change id reported: 37756858; UID 10409; state: ENABLED
+1791144730.095 10409  6902  6902 D CompatibilityChangeReporter: Compat change id reported: 171228096; UID 10409; state: ENABLED
+1791144730.116 10409  6902  6902 I SOSBox64: === App iniciado (M1 + M2) ===
+1791144730.117 10409  6902  6902 I SOSBox64: Versão do Android: API 34
+1791144730.117 10409  6902  6902 I SOSBox64: ABI principal: arm64-v8a
+1791144730.117 10409  6902  6902 I SOSBox64: Pasta de bibliotecas nativas: /data/app/~~KrM-DlpKBp8s3OjlqtbWjw==/br.deivid22srk.sosps5-c0MRS5955aUpXQU2xPo7uw==/lib/arm64
+1791144730.117 10409  6902  6902 I SOSBox64: libbox64.so: presente
+1791144730.117 10409  6902  6902 I SOSBox64: libpayload64.so: presente
+1791144730.117 10409  6902  6902 I SOSBox64: libanyhost64.so: presente
+1791144730.126 10409  6902  6902 D CompatibilityChangeReporter: Compat change id reported: 237531167; UID 10409; state: DISABLED
+1791144730.138 10409  6902  6902 D ViewRootImpl: update {(0,0)(fillxfill) sim={forwardNavigation} ty=BASE_APPLICATION wanim=0x10302fe
+1791144730.138 10409  6902  6902 D ViewRootImpl:   fl=LAYOUT_IN_SCREEN LAYOUT_INSET_DECOR SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+1791144730.138 10409  6902  6902 D ViewRootImpl:   pfl=NO_MOVE_ANIMATION FORCE_DRAW_STATUS_BAR_BACKGROUND FIT_INSETS_CONTROLLED
+1791144730.138 10409  6902  6902 D ViewRootImpl:   bhv=DEFAULT
+1791144730.138 10409  6902  6902 D ViewRootImpl:   fitSides=} by setView
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: QUALCOMM build                   : eaa701cd06, I183f6321f0
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: Build Date                       : 10/27/22
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: OpenGL ES Shader Compiler Version: EV031.35.01.12
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: Local Branch                     :
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: Remote Branch                    :
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: Remote Branch                    :
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: Reconstruct Branch               :
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: Build Config                     : S P 10.0.7 AArch64
+1791144730.208 10409  6902  6920 I AdrenoGLES-0: Driver Path                      : /vendor/lib64/egl/libGLESv2_adreno.so
+1791144730.211 10409  6902  6920 I AdrenoGLES-0: PFP: 0x016dc094, ME: 0x00000000
+1791144730.240 10409  6902  6920 I OpenGLRenderer: setGrContext nullptr-->validptr
+1791144730.242 10409  6902  6920 E OpenGLRenderer: Unable to match the desired swap behavior.
+1791144730.953 10409  6902  6909 I vid22srk.sosps5: Compiler allocated 4575KB to compile void android.view.ViewRootImpl.performTraversals()
+1791144732.978 10409  6902  6932 I SOSBox64: Executando: /data/app/~~KrM-DlpKBp8s3OjlqtbWjw==/br.deivid22srk.sosps5-c0MRS5955aUpXQU2xPo7uw==/lib/arm64/libbox64.so /data/app/~~KrM-DlpKBp8s3OjlqtbWjw==/br.deivid22srk.sosps5-c0MRS5955aUpXQU2xPo7uw==/lib/arm64/libanyhost64.so --game-dir /data/user/0/br.deivid22srk.sosps5/files/game (BOX64_LOG=DEBUG)
+1791144732.978 10409  6933  6933 W libbox64.so: type=1400 audit(0.0:151759): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c153,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791144732.978 10409  6933  6933 W libbox64.so: type=1400 audit(0.0:151760): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c153,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791144732.978 10409  6933  6933 W libbox64.so: type=1400 audit(0.0:151761): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c153,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791144732.978 10409  6933  6933 W libbox64.so: type=1400 audit(0.0:151762): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c153,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791144733.009 10409  6902  6932 I SOSBox64: sh: lscpu: inaccessible or not found
+1791144733.044 10409  6902  6932 I SOSBox64: SOS_HOST_STARTED
+1791144733.046 10409  6933  6933 W libanyhost64.so: type=1400 audit(0.0:151763): avc:  denied  { read } for  name="/" dev="tmpfs" ino=15361 scontext=u:r:untrusted_app_27:s0:c153,c257,c512,c768 tcontext=u:object_r:device:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791144733.054 10409  6902  6932 I SOSBox64: SOS_HOST_SDL2_OK driver=offscreen
+1791144733.054 10409  6902  6932 I SOSBox64: Os arquivos do jogo não foram encontrados.
+1791144733.054 10409  6902  6932 I SOSBox64: Copie seus próprios arquivos descriptografados do God of War Sons of Sparta (eboot.elf ou eboot.bin, sce_sys, sce_module, ...) para a mesma pasta deste programa e inicie novamente.
+1791144733.054 10409  6902  6932 I SOSBox64: Pasta: /data/user/0/br.deivid22srk.sosps5/files/game
+1791144733.054 10409  6902  6932 I SOSBox64: SOS_HOST_MISSING_GAME_FILES reason=no-eboot
+1791144733.172 10409  6902  6902 I SOSBox64: SUCESSO (M2): missing game files atingido (exit=1, SOS_HOST_SDL2_OK driver=offscreen)
+1791144736.455 10409  6902  6920 D Surface : Surface::disconnect
+1791144736.455 10409  6902  6920 D BufferQueueProducer: [VRI[MainActivity]#0(BLAST Consumer)0](id:1af600000000,api:1,p:6902,c:6902) disconnect: api 1
