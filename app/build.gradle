@@ -1,0 +1,50 @@
+// app module — PoC M1: run a static x86-64 ELF via box64 on the device.
+//
+// Key decisions (see docs/PLAN.md D3):
+//   - minSdk 28 / targetSdk 28: Android blocks exec/mmap of app-writable data on
+//     targetSdk >= 29; targetSdk 28 keeps W^X relaxed so box64's dynarec can mmap RWX.
+//   - compileSdk 35 (required by the newest AGP support matrix), ABI arm64-v8a only.
+//   - NO androidx dependencies: plain android.app.Activity with a programmatic UI.
+//   - useLegacyPackaging = true -> manifest extractNativeLibs="true": jniLibs .so files
+//     are extracted to nativeLibraryDir as REAL files with execute permission, which is
+//     how libbox64.so (a PIE executable renamed .so) can be launched via ProcessBuilder.
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'br.deivid22srk.sosps5'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "br.deivid22srk.sosps5"
+        minSdk 28
+        targetSdk 28
+        versionCode 1
+        versionName "0.1.0-poc-m1"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // CRITICAL: extract .so files to disk (with +x) instead of mmap-from-APK.
+            // This is the Android-side equivalent of android:extractNativeLibs="true".
+            useLegacyPackaging = true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        // PoC: do not fail the build over lint findings.
+        abortOnError = false
+    }
+}
+
+// No dependencies on purpose (framework-only UI keeps the APK minimal).

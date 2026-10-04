@@ -1,0 +1,74 @@
+# MILESTONES — SoS-PS5-Android
+
+Regra: só avançar quando o marco anterior passar. Reportar ao usuário ao fim de cada um.
+Status: `[ ]` pendente · `[~]` em andamento · `[x]` concluído · `[!]` bloqueado/invíavel (com explicação)
+
+## M1 — Prova de conceito do tradutor `[~]`
+
+**Objetivo:** rodar um ELF x86-64 simples dentro de um app Android ARM64 usando box64.
+
+Critérios de aceite:
+1. Job CI `box64-arm64` (runner `ubuntu-24.04-arm`) compila box64 nativo (dynarec ON) e
+   executa de verdade um payload x86-64 estático E um dinâmico (glibc cross), com saída
+   assertada no job summary. ← validação em hardware ARM64 real
+2. APK `poc` compilado no CI: empacota box64 (bionic/NDK) + payload x86-64; tela PT-BR
+   mostra resultado da execução; logs com tag dedicada.
+3. Execução no aparelho do usuário confirmada (logcat colado pelo usuário) — ou bloqueio
+   documentado com causa raiz.
+
+Status por critério (Task 1-a, 2026-10-04):
+1. `[~]` **em andamento, aguardando CI** — payloads x86_64 (`payloads/x86_64/`) e job
+   `box64-arm64` (`.github/workflows/build.yml`, runner `ubuntu-24.04-arm`) entregues;
+   payloads compilados/executados e verificados localmente em host x86_64 (evidência em
+   `docs/PROGRESS.md`); faltando a primeira execução real no runner ARM64 (dynarec ON +
+   assert dos markers). Estático = obrigatório (hard fail); dinâmico = stretch goal
+   (soft fail, `DYNAMIC_TEST_FAILED reason=...` no summary).
+2. `[ ]` pendente — task 1-b (empacotamento box64/NDK + payload no APK).
+3. `[ ]` pendente — depende de 1 e 2.
+
+Nota (Task 1-a): `payloads/x86_64/hello_static.c` é fonte canônica COMPARTILHADA
+com a task 1-b (APK usa o mesmo payload como `libpayload64.so`). Os marcadores
+`SOS_POC_STATIC_OK` e `SOS_POC_STATIC_MATH_OK` são contrato do CI 1-a e NÃO
+podem ser removidos/renomeados (colisão 1-a×1-b já ocorrida e mesclada — ver
+`docs/PROGRESS.md`).
+
+## M2 — Núcleo AnyPS5 em Linux x86-64 `[ ]`
+
+**Objetivo (reformulado — ver PLAN.md):** host AnyPS5 compila e roda em Linux x86-64
+(relinker `--linux`, entrada de host não-Win32 com SDL2), pronto para rodar sob box64.
+Critérios: binário Linux x86-64 construído no CI; roda sob box64 (runner arm64) até a
+tela de "arquivos do jogo ausentes" sem crash (execução real validada em CI).
+
+## M3 — Integração de libs no runtime box64/Android `[ ]`
+
+SDL2 via wrapper (input/vídeo), FFmpeg para o ABI-alvo, fontes freetype; decisões de
+empacotamento (o que vai em jniLibs vs rootfs mínima). Critérios: no runner arm64, o
+host sob box64 inicializa SDL2 (vídeo dummy) + decoders sem símbolo ausente.
+
+## M4 — Memória `[ ]`
+
+Endereços fixos do PS5 sob VA de 39 bits (reserva/marcação de faixas), mmap executável
+e W^X no Android, shims de /proc e paths. Critérios: relinker + loader mapeiam o
+eboot.elf de teste sintético em endereços fixos e executam trampolins sob box64 no
+aparelho (logcat prova execução em endereço fixo).
+
+## M5 — AGC→Vulkan 1.3 no Android `[ ]`
+
+Ponte Vulkan (processo x86-64 → driver nativo do aparelho), primeira passada de
+renderer com clear/triângulo, shader recompiler RDNA→SPIR-V funcionando no GPU do
+usuário. Critérios: frame renderizado validado por captura/logcat no aparelho.
+
+## M6 — Launcher Android `[ ]`
+
+Activity final, SAF com persistência, preparação 1ª execução com progresso, gamepad
+Bluetooth/USB prioridade (wrapper SDL2) e touch fallback, PT-BR completo.
+
+## M7 — Boot do jogo `[ ]`
+
+Dump do usuário no aparelho (via SAF), preparação (~2 min) e boot até menu/gameplay.
+Critérios: logcat limpo de crash, FPS reportado honestamente, limitações listadas.
+
+## Transversal
+
+- CI `build.yml` verde a cada push; APK como artifact. `[~]`
+- Docs de progresso atualizadas por marco. `[~]`

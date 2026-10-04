@@ -1,0 +1,301 @@
+# SoS-PS5-Android — CI (M1 / Task 1-a)
+#
+# Job "box64-arm64": builds box64 NATIVELY on a real ARM64 runner
+# (ubuntu-24.04-arm) with the ARM dynarec, cross-builds the x86_64 PoC
+# payloads with the amd64 cross toolchain, and EXECUTES them under box64.
+#   - Static payload test is mandatory: failure hard-fails the job.
+#   - Dynamic payload (guest glibc) is an M1 stretch goal: failure prints
+#     "DYNAMIC_TEST_FAILED reason=..." in the job summary but does NOT fail
+#     the workflow.
+# Job "apk": builds the PoC debug APK (task 1-b): box64 (NDK/bionic) +
+# static x86-64 payload packaged as arm64-v8a jniLibs, executed on-device
+# via ProcessBuilder.
+#
+# box64 is NEVER committed to this repo (decision D5): it is checked out from
+# upstream (ptitSeb/box64) at build time, exactly like the CI of the upstream
+# project does for aarch64 hosts (-DARM_DYNAREC=ON is the canonical flag set
+# used by box64's own release workflow for generic ARM64).
+
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  box64-arm64:
+    name: box64 ARM64 native build + x86_64 payload execution
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Checkout box64 upstream (ptitSeb/box64 @ master)
+        uses: actions/checkout@v4
+        with:
+          repository: ptitSeb/box64
+          ref: master
+          path: box64-src
+
+      - name: Install toolchain (cmake, ninja, amd64 cross gcc + glibc)
+        run: |
+          set -e
+          BOX64_SHA=$(git -C box64-src rev-parse HEAD)
+          echo "BOX64_SHA=$BOX64_SHA" >> "$GITHUB_ENV"
+          echo "BOX64_SHA=$BOX64_SHA"
+          {
+            echo "## box64 ARM64 validation (SoS-PS5-Android M1 / Task 1-a)"
+            echo ""
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| box64 git SHA | \`$BOX64_SHA\` |"
+            echo "| runner | \`${RUNNER_OS} ${RUNNER_ARCH}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-x86-64-linux-gnu libc6-dev-amd64-cross patchelf
+
+      - name: Configure box64 (ARM_DYNAREC=ON first, explicit OFF fallback)
+        run: |
+          set -e
+          DYNAREC=ON
+          if ! cmake -S box64-src -B box64-build -G Ninja \
+                    -DARM_DYNAREC=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                    > cmake_dynarec_on.log 2>&1; then
+            echo "::warning::cmake configure with ARM_DYNAREC=ON FAILED — retrying with ARM_DYNAREC=OFF (dynarec DISABLED; this will be flagged in the summary)"
+            DYNAREC=OFF
+            rm -rf box64-build
+            cmake -S box64-src -B box64-build -G Ninja \
+                  -DARM_DYNAREC=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                  > cmake_dynarec_off.log 2>&1
+          fi
+          echo "DYNAREC=$DYNAREC" >> "$GITHUB_ENV"
+          {
+            echo ""
+            echo "**DYNAREC=$DYNAREC** \`ARM_DYNAREC=$DYNAREC\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$DYNAREC" = "OFF" ]; then
+            {
+              echo ""
+              echo "> ⚠️ Dynarec was DISABLED (ARM_DYNAREC=ON configure failed). This run uses the box64 interpreter only — NOT the performance path."
+              echo ""
+              echo '```'
+              tail -n 20 cmake_dynarec_on.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Configured box64 with ARM_DYNAREC=$DYNAREC"
+
+      - name: Build box64 (ninja, -j2)
+        run: |
+          set -e
+          cmake --build box64-build -j2
+          ./box64-build/box64 --version || true
+
+      - name: Build x86_64 payloads with cross compiler
+        run: |
+          set -e
+          cd payloads/x86_64
+          if make static CC=x86_64-linux-gnu-gcc; then
+            echo "STATIC_PAYLOAD_MODE=cross-static" >> "$GITHUB_ENV"
+            echo "hello_static built cross-static (-static)"
+          else
+            echo "::warning::Cross -static link FAILED — visible fallback: rebuilding hello_static WITHOUT -static (still x86_64 guest code, run via box64 dynamic path)"
+            make clean
+            if make static CC=x86_64-linux-gnu-gcc STATIC_LDFLAGS=""; then
+              echo "STATIC_PAYLOAD_MODE=cross-DYNAMIC-fallback" >> "$GITHUB_ENV"
+            else
+              echo "::error::Could not build hello_static with the cross compiler at all (static AND dynamic fallback failed)"
+              exit 1
+            fi
+          fi
+          make dynamic CC=x86_64-linux-gnu-gcc
+          file hello_static hello_dyn
+          cd ../..
+
+      - name: Locate cross x86_64 glibc (libc.so.6 + ld-linux-x86-64.so.2)
+        run: |
+          set -e
+          LIBC=$(dpkg -L libc6-amd64-cross | grep '/libc\.so\.6$' | head -n1)
+          LDSO=$(dpkg -L libc6-amd64-cross | grep '/ld-linux-x86-64\.so\.2$' | head -n1)
+          if [ -z "$LIBC" ] || [ -z "$LDSO" ]; then
+            echo "::error::Could not locate libc.so.6 / ld-linux-x86-64.so.2 inside libc6-amd64-cross"
+            dpkg -L libc6-amd64-cross | head -n 40
+            exit 1
+          fi
+          # Box64 guest library search path: both the libc dir and the ld.so dir
+          # (they are usually the same directory in the cross package).
+          BOX64_LIBPATH="$(dirname "$LIBC"):$(dirname "$LDSO")"
+          echo "CROSS_LIBC=$LIBC"      >> "$GITHUB_ENV"
+          echo "CROSS_LDSO=$LDSO"      >> "$GITHUB_ENV"
+          echo "BOX64_LIBPATH=$BOX64_LIBPATH" >> "$GITHUB_ENV"
+          echo "libc.so.6           -> $LIBC"
+          echo "ld-linux-x86-64.so.2 -> $LDSO"
+          echo "BOX64_LD_LIBRARY_PATH will be: $BOX64_LIBPATH"
+          # Primary interpreter hookup: rewrite PT_INTERP of the dynamic guests.
+          patchelf --set-interpreter "$LDSO" payloads/x86_64/hello_dyn \
+            || echo "::warning::patchelf --set-interpreter failed — relying on /lib64 symlink fallback"
+          # Fallback: make the default PT_INTERP path (/lib64/ld-linux-x86-64.so.2)
+          # resolve to the cross loader. Harmless if patchelf already succeeded.
+          sudo mkdir -p /lib64
+          sudo ln -sf "$LDSO" /lib64/ld-linux-x86-64.so.2
+          ls -l /lib64/ld-linux-x86-64.so.2
+
+      - name: RUN static payload under box64 (mandatory — hard fail)
+        run: |
+          set +e
+          BOX64_LOG=INFO BOX64_LD_LIBRARY_PATH="$BOX64_LIBPATH" \
+            ./box64-build/box64 payloads/x86_64/hello_static > run_static.log 2>&1
+          RC=$?
+          cat run_static.log
+          {
+            echo ""
+            echo "### Static payload run"
+            echo ""
+            echo "- payload mode: \`$STATIC_PAYLOAD_MODE\`"
+            echo "- dynarec: \`$DYNAREC\`"
+            echo "- box64 exit code: \`$RC\`"
+            echo ""
+            echo '```'
+            cat run_static.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RC" -ne 0 ] \
+             || ! grep -q "SOS_POC_STATIC_OK" run_static.log \
+             || ! grep -q "SOS_POC_STATIC_MATH_OK" run_static.log; then
+            echo "::error::STATIC payload test FAILED under box64 (rc=$RC, mode=$STATIC_PAYLOAD_MODE, dynarec=$DYNAREC)"
+            {
+              echo ""
+              echo "**STATIC_TEST_FAILED** rc=$RC mode=$STATIC_PAYLOAD_MODE dynarec=$DYNAREC"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "STATIC_RESULT=PASS" >> "$GITHUB_ENV"
+          echo "**STATIC_TEST_PASSED** (rc=$RC mode=$STATIC_PAYLOAD_MODE dynarec=$DYNAREC)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: RUN dynamic payload under box64 (stretch goal — must NOT hard fail)
+        run: |
+          set +e
+          BOX64_LOG=INFO BOX64_LD_LIBRARY_PATH="$BOX64_LIBPATH" \
+            ./box64-build/box64 payloads/x86_64/hello_dyn > run_dynamic.log 2>&1
+          RC=$?
+          cat run_dynamic.log
+          {
+            echo ""
+            echo "### Dynamic payload run (M1 stretch goal)"
+            echo ""
+            echo "- BOX64_LD_LIBRARY_PATH: \`$BOX64_LIBPATH\`"
+            echo "- BOX64_LOG=INFO, box64 exit code: \`$RC\`"
+            echo ""
+            echo '```'
+            cat run_dynamic.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RC" -eq 0 ] && grep -q "SOS_POC_DYNAMIC_OK" run_dynamic.log; then
+            echo "DYNAMIC_RESULT=PASS" >> "$GITHUB_ENV"
+            echo "**DYNAMIC_TEST_PASSED** (rc=$RC)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Soft failure path: report, do NOT fail the workflow.
+          REASON="box64 rc=$RC; marker SOS_POC_DYNAMIC_OK not found on stdout (see log above; guest glibc=$CROSS_LIBC, guest ld.so=$CROSS_LDSO)"
+          echo "::warning::Dynamic payload test failed: $REASON"
+          {
+            echo ""
+            echo "**DYNAMIC_TEST_FAILED reason=$REASON**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Final summary (SHA256s + verdict lines)
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "### Payload SHA256"
+            echo '```'
+            for f in payloads/x86_64/hello_static payloads/x86_64/hello_dyn; do
+              [ -f "$f" ] && sha256sum "$f"
+            done
+            echo '```'
+            echo ""
+            echo "### Verdict"
+            echo ""
+            echo "- box64 SHA: \`${BOX64_SHA:-unknown}\`"
+            echo "- dynarec: \`${DYNAREC:-unknown}\`"
+            echo "- STATIC_TEST: \`${STATIC_RESULT:-FAIL}\` (mandatory)"
+            echo "- DYNAMIC_TEST: \`${DYNAMIC_RESULT:-FAIL}\` (M1 stretch goal; failure does not fail this workflow)"
+            echo "- artifacts: \`box64-arm64-poc\` (box64 binary + payloads + run logs)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts (box64 binary + payloads + logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: box64-arm64-poc
+          if-no-files-found: warn
+          path: |
+            box64-build/box64
+            payloads/x86_64/hello_static
+            payloads/x86_64/hello_dyn
+            run_static.log
+            run_dynamic.log
+            cmake_dynarec_on.log
+            cmake_dynarec_off.log
+
+  apk:
+    name: APK PoC (box64 + payload x86-64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install host tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cmake ninja-build file python3 gcc-x86-64-linux-gnu libc6-dev-amd64-cross
+
+      - name: Ensure Android SDK components (compileSdk 35)
+        run: |
+          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null || true
+          else
+            echo "sdkmanager not found; relying on preinstalled runner SDK"
+          fi
+
+      - name: Build box64 (NDK/bionic) + payload x86-64 into jniLibs
+        run: bash scripts/ci-build-box64.sh
+
+      - name: Evidence — jniLibs contents
+        run: |
+          {
+            echo "## jniLibs evidence (app/src/main/jniLibs/arm64-v8a)"
+            echo '```'
+            ls -la app/src/main/jniLibs/arm64-v8a
+            for f in app/src/main/jniLibs/arm64-v8a/*; do file "$f"; done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Assemble debug APK (Gradle 8.9 + AGP 8.7.3)
+        run: gradle -p . :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoS-PS5-Android-PoC-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

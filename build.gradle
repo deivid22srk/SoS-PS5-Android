@@ -1,0 +1,5 @@
+// Root build file — SoS-PS5-Android (PoC M1)
+// AGP 8.7.3 requires Gradle >= 8.9 (CI installs Gradle 8.9 via setup-gradle) and JDK 17.
+plugins {
+    id 'com.android.application' version '8.7.3' apply false
+}
