@@ -6,6 +6,28 @@ executado de verdade (comando + saída) ou está explicitamente marcado como
 
 ---
 
+## On-device #2 — SUCESSO com APK v2 (2026-10-04) — **M1 CONCLUÍDO**
+
+- Log do usuário (pastebin cMZGcxKy, cópia local `logs/success_v2.log`): após instalar
+  o APK v2 (CI run 37222328087, sha 7f1aa9d), o mesmo aparelho (motorola edge 30
+  fusion, Android 14) executou o payload x86-64 sob box64 **até o fim**:
+  - `SOS-PS5 PoC: static x86-64 payload started` + `argc/argv0/pid/uid` corretos;
+  - `uname ... machine=x86_64` (box64 mascarando a arquitetura — comportamento certo);
+  - `math: acc=7.485471 expected=7.485471 diff=0.000e+00` e
+    `ichk=4201695289734782276` — **checksum exato** igual à referência x86-64 nativa;
+  - `SOS_POC_STATIC_MATH_OK` + `SOS_POC_STATIC_OK`, `exit=0`, zero sinais/crash,
+    zero avc novo (só o ruído conhecido `sh: lscpu`).
+- Tela do app: `SUCESSO: SOS_POC_STATIC_OK detectado` (verde).
+- CI run 37222328087: job `box64-arm64` **success** (6 min) e job `apk` **success**
+  (2,5 min) — patch seccomp-safe aplicado e compilado nos dois caminhos (Linux ARM64
+  e NDK/bionic), confirmando que o patch é no-op no Linux.
+- Conclusão: **M1 completo** — os 3 critérios de aceite verificados com execução real
+  (CI ARM64 + aparelho do usuário). Pilha provada: ELF x86-64 estático → box64
+  (NDK/bionic, dynarec ARM, patch seccomp-safe) → ProcessBuilder no app → logcat.
+- APK v2 arquivado: `download/SoS-PS5-Android-PoC-debug.apk` (16,5 MB).
+
+---
+
 ## Fix on-device #1 — FALHA exit 159 (SIGSYS / set_robust_list) → patch seccomp-safe (2026-10-04)
 
 ### Evidência do aparelho (log do usuário, pastebin 1ZCBL8fA)

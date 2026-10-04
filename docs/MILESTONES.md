@@ -3,7 +3,7 @@
 Regra: só avançar quando o marco anterior passar. Reportar ao usuário ao fim de cada um.
 Status: `[ ]` pendente · `[~]` em andamento · `[x]` concluído · `[!]` bloqueado/invíavel (com explicação)
 
-## M1 — Prova de conceito do tradutor `[~]`
+## M1 — Prova de conceito do tradutor `[x]`
 
 **Objetivo:** rodar um ELF x86-64 simples dentro de um app Android ARM64 usando box64.
 
@@ -17,12 +17,12 @@ Critérios de aceite:
 2. [x] **CONCLUÍDO (mesmo run)** — APK `poc` compilado no CI: box64 (NDK r29/bionic,
    `ARM_DYNAREC=ON`, flexível page sizes) + payload estático empacotados como
    jniLibs; artifact `SoS-PS5-Android-PoC-debug.apk` (15,3 MB) publicado.
-3. [ ] **PENDENTE — aparelho do usuário (reteste com APK v2)**: 1º teste falhou com
-   exit 159 (SIGSYS = syscall arm64 99 `set_robust_list` bloqueado pelo seccomp do
-   Android — ver `docs/PROGRESS.md` § "Fix on-device #1"). Corrigido via
-   `patches/0001-android-seccomp-robust-list.patch` (box64 pinado em `abfb8c3`).
-   Instalar o APK novo, rodar o teste na tela e colar `adb logcat -s SOSBox64:V`
-   (passos em `docs/ON_DEVICE_TEST.md`).
+3. [x] **CONCLUÍDO (2026-10-04, reteste on-device com APK v2)** — motorola edge 30
+   fusion (Android 14): `SUCESSO: SOS_POC_STATIC_OK detectado (exit=0)`; log mostra
+   payload x86-64 rodando com checksum EXATO (`acc=7.485471`,
+   `ichk=4201695289734782276`), `uname machine=x86_64` (fake do box64 correto) e
+   zero sinais/crashes. CI run 37222328087 (sha 7f1aa9d): **success** nos 2 jobs.
+   APK v2 arquivado em download/SoS-PS5-Android-PoC-debug.apk.
 
 Histórico de status:
 - Task 1-a (2026-10-04): payloads + job `box64-arm64` entregues; verificação local em x86_64 OK; aguardava CI.
@@ -37,6 +37,10 @@ Histórico de status:
   box64 repassava direto ao kernel. Fix: patch seccomp-safe (`patches/0001`), box64
   pinado em `abfb8c3b2fad`, app decodifica sinais ≥ 128. Aguardando reteste com o
   APK v2.
+- Run 37222328087 + on-device #2 (2026-10-04): CI **success** nos 2 jobs e reteste no
+  aparelho **SUCESSO** (exit=0, markers + checksum exato). **M1 CONCLUÍDO** —
+  execução real de código x86-64 traduzido por box64 (dynarec ARM) dentro de app
+  Android ARM64, validada em CI e no aparelho do usuário.
 
 Nota (Task 1-a): `payloads/x86_64/hello_static.c` é fonte canônica COMPARTILHADA
 com a task 1-b (APK usa o mesmo payload como `libpayload64.so`). Os marcadores
