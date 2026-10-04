@@ -128,6 +128,42 @@ jobs:
           tail -n 30 dbg/F-interp-debug.log >> "$GITHUB_STEP_SUMMARY" || true
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Scenario H — dynarec SAFEFLAGS=2
+        if: always()
+        run: |
+          set +e
+          timeout 60 env BOX64_DYNAREC_SAFEFLAGS=2 BOX64_LOG=INFO ./box64-build/box64 host-x64/anyhost --game-dir ci-empty > dbg/H.log 2>&1
+          RC=$?
+          echo "H: rc=$RC"; tail -n 4 dbg/H.log
+          echo "| H SAFEFLAGS=2 | BOX64_DYNAREC_SAFEFLAGS=2 | \`$RC\` | $([ $RC -eq 1 ] && echo OK || echo '**FAIL**') |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scenario I — dynarec BIGBLOCK=0
+        if: always()
+        run: |
+          set +e
+          timeout 60 env BOX64_DYNAREC_BIGBLOCK=0 BOX64_LOG=INFO ./box64-build/box64 host-x64/anyhost --game-dir ci-empty > dbg/I.log 2>&1
+          RC=$?
+          echo "I: rc=$RC"; tail -n 4 dbg/I.log
+          echo "| I BIGBLOCK=0 | BOX64_DYNAREC_BIGBLOCK=0 | \`$RC\` | $([ $RC -eq 1 ] && echo OK || echo '**FAIL**') |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scenario J — dynarec STRONGMEM=1
+        if: always()
+        run: |
+          set +e
+          timeout 60 env BOX64_DYNAREC_STRONGMEM=1 BOX64_LOG=INFO ./box64-build/box64 host-x64/anyhost --game-dir ci-empty > dbg/J.log 2>&1
+          RC=$?
+          echo "J: rc=$RC"; tail -n 4 dbg/J.log
+          echo "| J STRONGMEM=1 | BOX64_DYNAREC_STRONGMEM=1 | \`$RC\` | $([ $RC -eq 1 ] && echo OK || echo '**FAIL**') |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scenario K — dynarec conservative FPU (X87DOUBLE+noFASTNAN+noFASTROUND)
+        if: always()
+        run: |
+          set +e
+          timeout 60 env BOX64_DYNAREC_X87DOUBLE=1 BOX64_DYNAREC_FASTNAN=0 BOX64_DYNAREC_FASTROUND=0 BOX64_LOG=INFO ./box64-build/box64 host-x64/anyhost --game-dir ci-empty > dbg/K.log 2>&1
+          RC=$?
+          echo "K: rc=$RC"; tail -n 4 dbg/K.log
+          echo "| K cons-FPU | X87DOUBLE=1 FASTNAN=0 FASTROUND=0 | \`$RC\` | $([ $RC -eq 1 ] && echo OK || echo '**FAIL**') |" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Scenario G — relinker under box64 (usage smoke)
         if: always()
         run: |
