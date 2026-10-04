@@ -1,4 +1,4 @@
-From 7178874da3f86f96b71a241440654cb5b61dc07b Mon Sep 17 00:00:00 2001
+From b04f2a70c0e924e05cfa93692ed72a02526dd9f8 Mon Sep 17 00:00:00 2001
 From: SoS Port Bot <bot@localhost>
 Date: Sun, 4 Oct 2026 21:00:21 +0000
 Subject: [PATCH] M3: guest libs probes (FFmpeg+freetype) + dynamic SDL2 link
@@ -26,12 +26,12 @@ Subject: [PATCH] M3: guest libs probes (FFmpeg+freetype) + dynamic SDL2 link
   SDL2 e condicional).
 - Headers do FFmpeg nao tem extern "C"; freetype usa FT_BEGIN_HEADER.
 ---
- host/CMakeLists.txt | 94 ++++++++++++++++++++++++++++++++++++++++++---
- host/anyhost.cpp    | 81 ++++++++++++++++++++++++++++++++++++++
- 2 files changed, 169 insertions(+), 6 deletions(-)
+ host/CMakeLists.txt | 98 ++++++++++++++++++++++++++++++++++++++++++---
+ host/anyhost.cpp    | 81 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 173 insertions(+), 6 deletions(-)
 
 diff --git a/host/CMakeLists.txt b/host/CMakeLists.txt
-index 63ba464..8e40cbf 100644
+index 63ba464..52391d1 100644
 --- a/host/CMakeLists.txt
 +++ b/host/CMakeLists.txt
 @@ -1,12 +1,23 @@
@@ -110,7 +110,7 @@ index 63ba464..8e40cbf 100644
  
  # relinker também estático: flag setada ANTES de add_subdirectory (o alvo
  # 'relinker' herda CMAKE_EXE_LINKER_FLAGS) e restaurada depois.
-@@ -64,5 +92,59 @@ set_target_properties(relinker PROPERTIES
+@@ -64,5 +92,63 @@ set_target_properties(relinker PROPERTIES
          RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
  
  add_executable(anyhost anyhost.cpp)
@@ -171,6 +171,10 @@ index 63ba464..8e40cbf 100644
 +            "${ANYHOST_GUEST_LIBS_DIR}/libavcodec_sos.so"
 +            "${ANYHOST_GUEST_LIBS_DIR}/libavutil_sos.so"
 +            "${ANYHOST_GUEST_LIBS_DIR}/libfreetype_sos.so")
++    # box64 @abfb8c3 NÃO embriona libstdc++/libgcc_s (sem wrapper nativo), e o APK
++    # não as empacota — link estático delas remove as DT_NEEDED do binário guest
++    # (mesmo binário roda no CI arm64 e no aparelho sem libs extras no caminho).
++    target_link_options(anyhost PRIVATE -static-libstdc++ -static-libgcc)
 +endif()
 diff --git a/host/anyhost.cpp b/host/anyhost.cpp
 index 4f60942..ddcd7b2 100644
