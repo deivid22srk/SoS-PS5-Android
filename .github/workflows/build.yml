@@ -1149,19 +1149,24 @@ jobs:
             -DSDL_POWER=OFF \
             -DSDL_LIBUDEV=OFF
           cmake --build build-sdl2-android -j2
-          SDL2SO="$(find build-sdl2-android -maxdepth 2 -name 'libSDL2-2.0.so.0*' -type f | head -n1)"
-          [ -n "$SDL2SO" ] || { echo "::error::libSDL2-2.0.so.0 not produced by the SDL2 ARM64 build"; exit 1; }
+          # SDL's CMake names the ANDROID output libSDL2.so (no version suffix;
+          # desktop Linux produces libSDL2-2.0.so.0) — accept both, copy the
+          # REAL file. bionic dlopen matches the FILE NAME we ship to the
+          # device (rootfs/lib/libSDL2-2.0.so.0), not the internal SONAME.
+          SDL2SO="$(find build-sdl2-android -maxdepth 2 \( -name 'libSDL2-2.0.so.0*' -o -name 'libSDL2.so' \) -type f | head -n1)"
+          [ -n "$SDL2SO" ] || { echo "::error::SDL2 shared lib (libSDL2.so or libSDL2-2.0.so.0*) not produced by the ARM64 build"; exit 1; }
+          echo "SDL2 output picked: $SDL2SO"
           mkdir -p app/src/main/jniLibs/arm64-v8a
-          cp -f "$SDL2SO" app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so
+          cp -fL "$SDL2SO" app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so
           file app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so
           readelf -d app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -E 'SONAME|NEEDED' || true
-          # HARD evidence: ARM aarch64, dynamically linked, SONAME libSDL2-2.0.so.0.
+          # HARD evidence: ARM aarch64, dynamically linked, ELF valid (SONAME on
+          # Android is libSDL2.so — accepted; the device copy is renamed to
+          # libSDL2-2.0.so.0 which is what bionic dlopen matches).
           file app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -q "ARM aarch64" \
             || { echo "::error::SDL2 native lib is NOT ARM aarch64"; exit 1; }
           file app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -qi "dynamically linked" \
             || { echo "::error::SDL2 native lib is NOT dynamically linked"; exit 1; }
-          readelf -d app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -q 'SONAME.*\[libSDL2-2\.0\.so\.0\]' \
-            || { echo "::error::SDL2 native lib SONAME is not libSDL2-2.0.so.0"; exit 1; }
           {
             echo ""
             echo "### Native SDL2 (ARM64/bionic) → jniLibs/libSDL2_sos_native.so"
