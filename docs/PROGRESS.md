@@ -537,3 +537,28 @@ correções documentais/higiene aplicadas e re-validadas).
 - Fix: `BOX64_DYNAREC_SAFEFLAGS=2` no step RUN anyhost do `build.yml` e no
   `runM2Test` do app (overload `extraEnv` em `execUnderBox64`; fluxo M1
   intocado). `docs/KNOWN_BUGS.md` criado (KB-001).
+
+## CI do M2 — VERDE (run 37230357330, 2026-10-05) — critérios 1 e 2 concluídos
+
+- sha `7ce8ee7` (fix #3 aplicado). **3/3 jobs SUCCESS**: `host-linux` 16/16,
+  `box64-arm64` 19/19, `apk` 16/16.
+- Critério 1: `anyhost` + `relinker` saem `statically linked x86-64`
+  (evidência `file` + `HOST_STATIC_OK` no summary); smoke nativo
+  `HOST_NATIVE_SMOKE_PASSED` (exit 1 + markers + sem Fatal signal).
+- Critério 2 (execução REAL sob box64 em ARM64): stdout do host no runner:
+  `SOS_HOST_STARTED` → `SOS_HOST_SDL2_OK driver=offscreen` → texto PT-BR →
+  `SOS_HOST_MISSING_GAME_FILES reason=no-eboot`, exit 1 limpo —
+  **HOST_UNDER_BOX64_PASSED**. M1 de regressão: `STATIC_RESULT: PASS` +
+  `DYNAMIC_RESULT: PASS`; relinker sob box64: usage limpa (rc=1).
+- Fix-loop desta sessão (3 iterações + matriz de debug):
+  1. #1 `HOST_NOT_STATIC` era path errado do relinker →
+     `RUNTIME_OUTPUT_DIRECTORY` no CMake do host (patch 0002 regenerado).
+  2. #2 SIGSEGV sob dynarec → matriz `debug-m2` (2 runs) → root cause
+     EFLAGS parcial do dynarec ARM → workaround `BOX64_DYNAREC_SAFEFLAGS=2`
+     (KB-001); intérprete provou o guest como pass-integral.
+  3. #3 erro de compilação Java (call-site M1 não atualizado p/ nova
+     assinatura `extraEnv`) → `null` no call-site + remoção do workflow
+     temporário de debug.
+- APK do M2 publicado (18,6 MB): `libbox64.so` + `libpayload64.so` +
+  `libanyhost64.so`; arquivado em `download/SoS-PS5-Android-M2-debug.apk`.
+- Pendente para fechar o M2: critério 3 (aparelho do usuário).

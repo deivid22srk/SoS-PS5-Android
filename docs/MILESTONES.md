@@ -75,12 +75,18 @@ Sub-etapas:
   aprovados (offscreen headless, duplo-fail SDL2, relink sem restart); GO emitido.
 
 Critérios de aceite:
-1. [ ] Binário Linux x86-64 (anyhost + relinker, estáticos) construído no CI (job
-   `host-linux`) com smoke nativo verde.
-2. [ ] Host sob box64 no runner arm64 atinge `SOS_HOST_MISSING_GAME_FILES` com exit 1
-   limpo (nenhum `Fatal signal`) — execução real validada em CI.
+1. [x] **CONCLUÍDO (run 37230357330, 2026-10-05)** — job `host-linux` verde:
+   `anyhost` + `relinker` x86-64 **statically linked**, smoke nativo
+   (`HOST_NATIVE_SMOKE_PASSED`: exit 1 + 4 markers/ checks).
+2. [x] **CONCLUÍDO (mesmo run)** — job `box64-arm64` verde (19/19 steps): host sob
+   box64 (dynarec ARM ON + `BOX64_DYNAREC_SAFEFLAGS=2`, ver KB-001) atinge
+   `SOS_HOST_MISSING_GAME_FILES reason=no-eboot` com `SOS_HOST_SDL2_OK
+   driver=offscreen`, exit 1 limpo, nenhum `Fatal signal`
+   (`HOST_UNDER_BOX64_PASSED`); smokes M1 de regressão PASS (estático, dinâmico)
+   e relinker sob box64 limpo (usage, exit 1).
 3. [ ] APK de teste executa o host no aparelho (motorola edge 30 fusion, Android 14):
    veredito verde do app (marker + exit 1 + SDL2 OK, sem crash no logcat).
+   APK do run 37230357330 pronto (18,6 MB, 3 jniLibs) — aguardando o usuário.
 
 ## M3 — Integração de libs no runtime box64/Android `[ ]`
 

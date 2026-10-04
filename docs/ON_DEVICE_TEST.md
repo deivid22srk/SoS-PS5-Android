@@ -219,3 +219,11 @@ seção 6 podem aparecer também neste teste.
 Com o M2 verde no aparelho, o próximo passo (marco futuro) é prover os arquivos do
 jogo descriptografados (`eboot.elf`/`eboot.bin`, `sce_sys`, `Media`) no diretório do
 app — aí o mesmo host avança para `SOS_HOST_VALIDATE_OK` e o caminho do relinker.
+
+> **APK de referência do M2 (CI verde):** run
+> [37230357330](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37230357330)
+> (sha 7ce8ee7, 2026-10-05) — artifact `SoS-PS5-Android-PoC-debug.apk`
+> (18,6 MB; contém `libbox64.so` + `libpayload64.so` + `libanyhost64.so`).
+> No CI, o host sob box64 no runner ARM64 atinge
+> `SOS_HOST_MISSING_GAME_FILES reason=no-eboot` com `SOS_HOST_SDL2_OK
+> driver=offscreen` e exit 1 limpo (`HOST_UNDER_BOX64_PASSED`).
