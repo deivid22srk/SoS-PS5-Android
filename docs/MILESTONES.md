@@ -8,23 +8,26 @@ Status: `[ ]` pendente · `[~]` em andamento · `[x]` concluído · `[!]` bloque
 **Objetivo:** rodar um ELF x86-64 simples dentro de um app Android ARM64 usando box64.
 
 Critérios de aceite:
-1. Job CI `box64-arm64` (runner `ubuntu-24.04-arm`) compila box64 nativo (dynarec ON) e
-   executa de verdade um payload x86-64 estático E um dinâmico (glibc cross), com saída
-   assertada no job summary. ← validação em hardware ARM64 real
-2. APK `poc` compilado no CI: empacota box64 (bionic/NDK) + payload x86-64; tela PT-BR
-   mostra resultado da execução; logs com tag dedicada.
-3. Execução no aparelho do usuário confirmada (logcat colado pelo usuário) — ou bloqueio
-   documentado com causa raiz.
+1. [x] **CONCLUÍDO (run 37220048527, 2026-10-04)** — Job CI `box64-arm64`
+   (`ubuntu-24.04-arm`) compila box64 v0.4.5 nativo com `ARM_DYNAREC=ON` e executou
+   de verdade: payload **estático** (`SOS_POC_STATIC_OK` + `SOS_POC_STATIC_MATH_OK`,
+   checksum exato) E payload **dinâmico** com glibc guest
+   (`SOS_POC_DYNAMIC_OK`). Evidência: artifacts `box64-arm64-poc` (run_static.log /
+   run_dynamic.log) e job summary.
+2. [x] **CONCLUÍDO (mesmo run)** — APK `poc` compilado no CI: box64 (NDK r29/bionic,
+   `ARM_DYNAREC=ON`, flexível page sizes) + payload estático empacotados como
+   jniLibs; artifact `SoS-PS5-Android-PoC-debug.apk` (15,3 MB) publicado.
+3. [ ] **PENDENTE — aparelho do usuário**: instalar o APK, rodar o teste na tela e
+   colar `adb logcat -s SOSBox64:V` (passos em `docs/ON_DEVICE_TEST.md`).
 
-Status por critério (Task 1-a, 2026-10-04):
-1. `[~]` **em andamento, aguardando CI** — payloads x86_64 (`payloads/x86_64/`) e job
-   `box64-arm64` (`.github/workflows/build.yml`, runner `ubuntu-24.04-arm`) entregues;
-   payloads compilados/executados e verificados localmente em host x86_64 (evidência em
-   `docs/PROGRESS.md`); faltando a primeira execução real no runner ARM64 (dynarec ON +
-   assert dos markers). Estático = obrigatório (hard fail); dinâmico = stretch goal
-   (soft fail, `DYNAMIC_TEST_FAILED reason=...` no summary).
-2. `[ ]` pendente — task 1-b (empacotamento box64/NDK + payload no APK).
-3. `[ ]` pendente — depende de 1 e 2.
+Histórico de status:
+- Task 1-a (2026-10-04): payloads + job `box64-arm64` entregues; verificação local em x86_64 OK; aguardava CI.
+- Task 1-b (2026-10-04): APK PoC entregue (box64 NDK/bionic + payload como jniLibs).
+- Task 1-c (2026-10-04): revisão crítica independente — 2 MAJOR corrigidos (watchdog de
+  timeout, IOException), 4 MINOR corrigidos, veredito GO.
+- Fix CI (2026-10-04): branch do box64 upstream mudou de `master` para `main`.
+- Run 37220048527 (2026-10-04): **verde** — critérios 1 e 2 concluídos (evidência acima);
+  critério 3 aguarda o aparelho do usuário.
 
 Nota (Task 1-a): `payloads/x86_64/hello_static.c` é fonte canônica COMPARTILHADA
 com a task 1-b (APK usa o mesmo payload como `libpayload64.so`). Os marcadores

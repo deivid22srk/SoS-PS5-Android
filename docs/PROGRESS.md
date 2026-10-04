@@ -306,3 +306,18 @@ aceito pelo parser do GitHub Actions).
   `/home/z/my-project/download/SoS-PS5-Android-Diagnostico.md`.
 - Decisão A do usuário (ver PLAN.md): processo único x86-64 sob box64 no
   Android ARM64. Validado em CI ARM64 real (este repo, M1).
+
+## Task: M1 — Validação de CI (run 37220048527, 2026-10-04)
+
+**Resultado: VERDE (ambos os jobs).**
+
+| Item | Evidência |
+|---|---|
+| box64 v0.4.5, `ARM_DYNAREC=ON`, compilado nativamente em `ubuntu-24.04-arm` | Banner no log: `Box64 arm64 v0.4.5 8b150dc with Dynarec built on Oct 4 2026` |
+| Payload estático x86-64 executado sob box64 (hardware ARM64 real) | `run_static.log`: `SOS_POC_STATIC_OK` + `SOS_POC_STATIC_MATH_OK` (checksum exato: `ichk=4201695289734782276`, `diff=0.000e+00`) |
+| Payload dinâmico x86-64 (glibc guest via cross libc6-amd64) sob box64 | `run_dynamic.log`: `SOS_POC_DYNAMIC_OK` |
+| APK PoC empacotado | Artifact `SoS-PS5-Android-PoC-debug.apk` (15,3 MB) — box64 NDK r29/bionic + payload estático como jniLibs |
+
+Link do run: https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37220048527
+
+Pendente do M1: critério 3 (execução no aparelho do usuário) — `docs/ON_DEVICE_TEST.md`.
