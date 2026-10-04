@@ -241,3 +241,90 @@ app — aí o mesmo host avança para `SOS_HOST_VALIDATE_OK` e o caminho do reli
 > No CI, o host sob box64 no runner ARM64 atinge
 > `SOS_HOST_MISSING_GAME_FILES reason=no-eboot` com `SOS_HOST_SDL2_OK
 > driver=offscreen` e exit 1 limpo (`HOST_UNDER_BOX64_PASSED`).
+
+## 8. Teste M3 (host + libs: SDL2 wrapper, FFmpeg, freetype)
+
+O M3 acrescenta ao APK as bibliotecas do runtime e prova o caminho completo do
+loader: o host (`anyhost`, agora x86-64 **dinâmico**) carrega a SDL2 via
+**wrapper nativa ARM64** (compilada dentro do box64 — `wrappedsdl2`), e as
+liberias guest x86-64 `libavcodec_sos.so`/`libavutil_sos.so`/
+`libfreetype_sos.so` são resolvidas pelo box64 via `BOX64_LD_LIBRARY_PATH`
+apontando para o `nativeLibraryDir` do app. O app também monta a "rootfs
+mínima" (1 arquivo): copia `libSDL2_sos_native.so` para
+`<filesDir>/rootfs/lib/libSDL2-2.0.so.0` — é por esse nome que a SDL2 nativa é
+dlopen-ed pelo wrapper.
+
+### 8.1 Pré-requisitos
+
+- APK do CI com M3 — run
+  [37239106249](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37239106249)
+  → artifact `SoS-PS5-Android-PoC-debug.apk` (23,9 MB; **7 jniLibs**:
+  libbox64, libpayload64, libanyhost64, libavcodec_sos, libavutil_sos,
+  libfreetype_sos, libSDL2_sos_native). Instala por cima dos anteriores.
+- No diagnóstico de abertura, o quadro de libs agora lista as 7 — todas
+  `presente`. Se `libSDL2_sos_native.so` ou alguma `*_sos.so` aparecer
+  `AUSENTE`, o APK é antigo.
+
+### 8.2 Passo a passo
+
+1. Abra o app (título: **"SoS PS5 - box64 (M1 + M2 + M3)"**).
+2. (Opcional) Marque **"Log detalhado do box64 (BOX64_LOG=DEBUG)"**.
+3. Toque no botão **"M3: Rodar host AnyPS5 + libs (FFmpeg/freetype)"** (abaixo
+   do M2). Os botões M1 e M2 continuam funcionando como regressão.
+4. Aguarde alguns segundos (watchdog: 120 s).
+
+### 8.3 O que é SUCESSO (tela)
+
+Linha em **verde**:
+
+```
+SUCESSO (M3): host + libs OK sob box64 (SDL2 via wrapper nativa, FFmpeg e freetype carregados, exit=1 limpo).
+```
+
+com as evidências extraídas (quando disponíveis): `driver=offscreen`,
+`version=2.13.3` (freetype), `avf=6.1.2` (FFmpeg). No quadro de saída:
+
+```
+SOS_HOST_STARTED
+SOS_HOST_SDL2_OK driver=offscreen
+SOS_HOST_FREETYPE_OK version=2.13.3
+SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=6.1.2
+Os arquivos do jogo não foram encontrados...   (texto PT-BR do host)
+SOS_HOST_MISSING_GAME_FILES reason=no-eboot
+```
+
+Critérios exatos do verde (iguais ao CI): exit==1 **E**
+`SOS_HOST_MISSING_GAME_FILES` com linha terminando **exatamente**
+`reason=no-eboot` **E** `SOS_HOST_SDL2_OK` **E** `SOS_HOST_FFMPEG_OK` **E**
+`SOS_HOST_FREETYPE_OK`, sem `SOS_HOST_M3_FAIL`/`SOS_HOST_INTERNAL_ERROR`/
+`SOS_HOST_M3_SKIPPED`. Regra nova (contrato M3 §4): qualquer **outro**
+`reason=` (`not-elf`, `no-sce_sys`, `no-media`, `no-libs`, `no-relinker`) é
+**FALHA** (na pasta vazia do teste só `no-eboot` é alcançável — reason
+diferente = investigar antes de re-testar).
+
+### 8.4 Capturar o logcat
+
+```bash
+adb logcat -s SOSBox64:V > sosbox64-m3.log
+```
+
+### 8.5 Resultados anormais (tabela de diagnóstico)
+
+| Sintoma na tela | Provável causa | O que fazer |
+|---|---|---|
+| `FALHA (M3) — SOS_HOST_M3_SKIPPED` | APK construído sem as sondas (binário desatualizado) | confira se o APK veio do run 37239106249 ou posterior |
+| `SOS_HOST_M3_FAIL lib=ffmpeg reason=...` | decoder não registrou / `avcodec_open2` falhou sob box64 | mande o logcat completo + BOX64_LOG=DEBUG |
+| `SOS_HOST_M3_FAIL lib=freetype reason=...` | `FT_Init_FreeType` falhou | idem |
+| `FALHA — libSDL2_sos_native.so ausente no APK` | APK sem a SDL2 nativa (build apk antigo) | baixe o artifact do run correto |
+| exit 139 / Fatal signal no logcat | SIGSEGV sob dynarec (KB-001 reaparecido) | mande o logcat; a matriz KB-001 volta ao CI |
+| `SOS_HOST_INTERNAL_ERROR reason=m3-probe-failed` | qualquer sonda falhou (exit 2) | cole a saída integral |
+| exit ≠ 1 sem markers de sonda | loader não resolveu alguma lib guest | logcat + conferir as 7 libs no diagnóstico de abertura |
+
+Ruído conhecido (não fatais): mesmas linhas `avc: denied ...` e `sh: lscpu`
+das seções 6/7. Nenhum patch seccomp novo foi necessário no M3.
+
+> **APK de referência do M3 (CI verde):** run
+> [37239106249](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37239106249)
+> (sha deba957, 2026-10-05) — no CI ARM64 o host M3 passou sob box64 **sem**
+> `BOX64_DYNAREC_SAFEFLAGS` (KB-001 reavaliado e fechado: wrapper nativo
+> eliminou o gatilho).

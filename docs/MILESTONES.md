@@ -106,11 +106,45 @@ Histórico de status:
 - On-device #1 (2026-10-05): **SUCESSO** no aparelho do usuário — **M2
   CONCLUÍDO** (critérios 1, 2 e 3 com execução real em CI e no aparelho).
 
-## M3 — Integração de libs no runtime box64/Android `[ ]` (próximo marco)
+## M3 — Integração de libs no runtime box64/Android `[~]` (próximo marco)
 
-SDL2 via wrapper (input/vídeo), FFmpeg para o ABI-alvo, fontes freetype; decisões de
-empacotamento (o que vai em jniLibs vs rootfs mínima). Critérios: no runner arm64, o
-host sob box64 inicializa SDL2 (vídeo dummy) + decoders sem símbolo ausente.
+Contrato/empacotamento: `docs/M3-LIBS-RUNTIME.md` (M3-a). SDL2 via wrapper nativa
+ARM64 (wrappedsdl2 do box64), FFmpeg n6.1.2 + freetype 2.13.3 como libs guest
+x86-64 (`_sos` SONAMEs), rootfs mínima = 1 arquivo (libSDL2 nativa renomeada no
+filesDir), libstdc++/libgcc_s estáticas no host.
+
+Critérios de aceite:
+1. [x] **CONCLUÍDO (run 37239106249, 2026-10-05)** — job `host-linux`:
+   guest libs construídas (FFmpeg/freetype shared + patchelf `_sos`,
+   `M3_GUEST_LIBS_OK`) + anyhost **dinâmico** (DT_NEEDED = SDL2 + 3 `_sos` +
+   libc; libstdc++/libgcc_s PROIBIDAS como DT_NEEDED) + relinker estático
+   (`HOST_M3_EVIDENCE_OK`); smoke nativo com TODOS os markers
+   (`HOST_NATIVE_SMOKE_PASSED`: SDL2 offscreen + FREETYPE 2.13.3 + FFMPEG
+   6.1.2 + MISSING_GAME_FILES reason=no-eboot, exit 1).
+2. [x] **CONCLUÍDO (mesmo run)** — job `box64-arm64` (19/19): host M3 sob box64
+   com wrapper SDL2 nativa (`NATIVE_SDL2_DLOPEN_OK`), **TODOS os markers sem
+   `symbol not found`**; **KB-001 reavaliado**: leg A SEM
+   `BOX64_DYNAREC_SAFEFLAGS` = PASS (`KB001_REEVAL_NO_SAFEFLAGS_PASS`) →
+   workaround removido do CI e do app (KB-001 FECHADO p/ M3); regressão M1
+   PASS (estático + dinâmico); relinker sob box64 limpo.
+3. [x] **CONCLUÍDO (mesmo run)** — job `apk`: SDL2 nativa ARM64/bionic
+   (dummy/offscreen, submodule pinado) + box64 NDK + anyhost dinâmico + 3 libs
+   guest no APK (**7 jniLibs**, `JNI_LIBS_M3_EVIDENCE_OK`); botão M3 no app
+   com veredito verde exigindo os 5 markers + exit 1 (M1/M2 intocados).
+4. [ ] Teste on-device (motorola edge 30 fusion, Android 14): botão M3 verde
+   no app, logcat com markers, sem crash. APK do run 37239106249 arquivado
+   (23,9 MB, 7 jniLibs) — aguardando o usuário.
+
+Histórico de status (fix-loop CI do M3, 2026-10-05):
+- Run 37237030734: host-linux SUCCESS no 1º try; box64-arm64 SUCCESS
+  (KB-001 PASS sem SAFEFLAGS); apk FALHOU — wrapper jar do android-project da
+  SDL vendored reprovava a validação do setup-gradle → removido (d5f4c34).
+- Run 37237672692: apk FALHOU — stubs JNI de haptic incondicionais na SDL
+  @4b69833 exigem `SDL_HAPTIC=ON` no Android (e4e2412).
+- Run 37238368339: apk FALHOU — CMake da SDL no ANDROID gera `libSDL2.so` (sem
+  sufixo de versão); find/assert atualizados (deba957).
+- Run 37239106249: **3/3 jobs SUCCESS** — critérios 1-3 concluídos; APK v4
+  arquivado (download/SoS-PS5-Android-M3-debug.apk).
 
 ## M4 — Memória `[ ]`
 

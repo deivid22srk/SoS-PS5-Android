@@ -586,3 +586,64 @@ correções documentais/higiene aplicadas e re-validadas).
   Nenhuma ampliação do patch seccomp (0001) foi necessária para o host.
 - Fechamento: MILESTONES.md (M2 `[x]`, critérios 1-3 `[x]`), ON_DEVICE_TEST.md
   (§7.6 resultado real), PLAN.md (risco SIGSYS do M2 fechado).
+
+## M3 — Implementação (2026-10-05, M3-a..M3-e)
+
+- **M3-a**: mapeamento upstream (3rdparty: SDL2 submodule pinado 4b69833,
+  ffmpeg-core/freetype submodules NÃO inicializados) + contrato
+  `docs/M3-LIBS-RUNTIME.md`: empacotamento (7 jniLibs, rootfs mínima = 1
+  arquivo), markers M3, gating `reason≠no-eboot` (REGRA §4 — resolve F7),
+  plano de reavaliação do KB-001.
+- **M3-b** (sub-agente, verificado localmente): `scripts/m3-build-guest-libs.sh`
+  (FFmpeg n6.1.2 shared mínimo + freetype 2.13.3 shared do submodule + SDL2
+  x86-64 shared p/ link local; patchelf → SONAMEs `_sos`); anyhost M3
+  (sondas FREETYPE/FFMPEG atrás de `ANYHOST_M3_PROBES`, SDL2 dinâmica atrás de
+  `ANYHOST_SDL2_DYNAMIC`, M2-compat default com `SOS_HOST_M3_SKIPPED`); patch
+  `0003-sos-m3-libs.patch` provado em worktree limpo (0002+0003 sequenciais).
+  Smokes locais reais: exit 1 + 5 markers; not-elf observado; `--version` sem
+  sondas.
+- **Fix transversal (3-b→main)**: box64 @abfb8c3 não embriona
+  libstdc++/libgcc_s e o APK não as empacota → `-static-libstdc++
+  -static-libgcc` no anyhost (DT_NEEDED final: SDL2 + 3 `_sos` + libc apenas);
+  CI assert atualizado para PROIBIR libstdc++/libgcc_s (9c762b9, b04f2a7).
+- **M3-c** (sub-agente): build.yml 651→~1250 linhas — host-linux (apt
+  libsdl2-dev, guest libs + evidência SONAME/NEEDED, smoke M3), box64-arm64
+  (apt libsdl2-2.0-0 nativa p/ wrapper, matriz KB-001 leg A/B + bench
+  condicional), apk (SDL2 ARM64/bionic via NDK do submodule, 7 jniLibs).
+- **M3-d** (sub-agente): MainActivity — `prepareM3Runtime()` (rootfs 1 arquivo:
+  `libSDL2_sos_native.so` → `<filesDir>/rootfs/lib/libSDL2-2.0.0.so.0`...
+  correção: `libSDL2-2.0.so.0`; env `LD_LIBRARY_PATH` + `BOX64_LD_LIBRARY_PATH`
+  com nativeLibraryDir primeiro), botão M3 com veredito de 5 markers +
+  `reason=no-eboot` EXATO + exit 1; `runM2Test` usa o prep e SEM SAFEFLAGS;
+  `runM1Test` byte-idêntico (diff vazio).
+- **M3-e** (revisor crítico independente): veredito GO após 2 fixes
+  BLOQUEANTES — F1 assert NEEDED usava `libc` bare (nunca casa
+  `[libc.so.6]`) ⇒ CI vermelho garantido (e1fe535); F2 patch 0003
+  re-exportado não committado (160c4e4). F3 greps `reason=no-eboot$`
+  ancorados. A deferred notes F4-F7 (SDL bionic só prova no aparelho).
+
+## M3 — CI (2026-10-05): VERDE no run 37239106249 — critérios 1-3 concluídos
+
+- Fix-loop do CI (3 iterações, causas DISTINTAS, nenhuma repetida):
+  1. Run 37237030734: apk job — `gradle-wrapper.jar` do `android-project`
+     exemplar da SDL vendored reprovava a validação do setup-gradle →
+     `rm -rf 3rdparty/SDL2/android-project` pós-checkout (d5f4c34). host-linux
+     e box64-arm64 verdes já neste run (KB-001 leg A PASS sem SAFEFLAGS!).
+  2. Run 37237672692: apk job — `SDL_HAPTIC=OFF` não compila no Android
+     (stubs JNI incondicionais chamam Android_AddHaptic) → `SDL_HAPTIC=ON`
+     (e4e2412); revalidado local x86-64 + smoke.
+  3. Run 37238368339: apk job — SDL no ANDROID gera `libSDL2.so` (sem sufixo
+     `.so.0`) → find aceita ambos os nomes, SONAME assert relaxado (bionic
+     casa por NOME de arquivo no LD_LIBRARY_PATH) (deba957).
+- Run 37239106249 (sha deba957): **3/3 jobs SUCCESS**.
+  - host-linux: `M3_GUEST_LIBS_OK` + `HOST_M3_EVIDENCE_OK` +
+    `HOST_NATIVE_SMOKE_PASSED` (markers SDL2 offscreen/FREETYPE 2.13.3/FFMPEG
+    6.1.2/reason=no-eboot, exit 1).
+  - box64-arm64: `NATIVE_SDL2_DLOPEN_OK`; host M3 sob box64 (dynarec ON, SEM
+    SAFEFLAGS): TODOS os markers, zero `symbol not found`, exit 1 —
+    **`KB001_REEVAL_NO_SAFEFLAGS_PASS`** → `KB001_SAFEFLAGS_REMOVED=1`
+    (KB-001 FECHADO p/ M3, bench desnecessário); M1 regressão PASS; relinker OK.
+  - apk: 7 jniLibs verificadas; APK 22,6 MB (artifact) / 23,9 MB extraído.
+- APK v4 arquivado: `download/SoS-PS5-Android-M3-debug.apk` (7 jniLibs
+  conferidas por zip listing).
+- Pendente para fechar o M3: critério 4 (teste on-device — ON_DEVICE_TEST.md §8).

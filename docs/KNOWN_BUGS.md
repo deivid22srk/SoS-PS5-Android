@@ -31,12 +31,17 @@ contorno, status e quando reavaliar.
   código de init da SDL2 estática. `BOX64_DYNAREC_SAFEFLAGS=2` (manuseio
   conservador de flags) elimina o crash com dynarec LIGADO; knobs de memória
   (STRONGMEM), de blocos (BIGBLOCK=0) e de FPU não afetam.
-- **Contorno ativo:** `BOX64_DYNAREC_SAFEFLAGS=2` para as execuções do host
-  (CI `box64-arm64` step RUN anyhost; app M2 `runM2Test` via `extraEnv`).
-  Custo: leve perda de performance do dynarec enquanto o workaround estiver
-  ativo (o relinker não precisa do knob).
-- **Impacto futuro:** no M3 a SDL2 guest (x86-64 estática) será substituída
-  pelo wrapper do box64 → SDL2 nativa, eliminando o código disparador. Se o
-  padrão de flags afetar código do jogo no M4+, reavaliar (upgrade do box64
-  upstream, bisect fino do dynarec, ou SAFEFLAGS global).
-- **Status:** CONTORNADO (workaround documentado; não é fechamento definitivo).
+- **Contorno (REMOVIDO no M3):** `BOX64_DYNAREC_SAFEFLAGS=2` estava ativo no
+  CI (RUN anyhost) e no app (`runM2Test` via `extraEnv`) durante o M2.
+- **Reavaliação M3 (2026-10-05, run 37239106249):** com a SDL2 guest estática
+  substituída pelo **wrapper nativo do box64** (`wrappedsdl2.c` → SDL2 ARM64
+  nativa), o código disparador deixou de existir. A matriz KB-001 do job
+  `box64-arm64` executou o fluxo M3 completo (host dinâmico + FFmpeg/freetype
+  guest + SDL2 wrapper) **SEM** `SAFEFLAGS`: **PASS** limpo
+  (`KB001_REEVAL_NO_SAFEFLAGS_PASS`), zero sinais, zero `symbol not found`.
+  Workaround removido do CI e do app (`KB001_SAFEFLAGS_REMOVED=1`). Benchmark
+  de custo não foi necessário (contorno não é mais usado); se o SIGSEGV
+  reaparecer em outro guest code (M4+, ex. código do jogo), a matriz volta a
+  rodar automaticamente e mede o delta antes de re-adotar.
+- **Status:** FECHADO para o cenário M3 (reabrir via matriz KB-001 se crash
+  dynarec reaparecer).
