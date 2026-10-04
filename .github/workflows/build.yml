@@ -340,7 +340,10 @@ jobs:
           # M3 NEEDED set on the dynamic anyhost (contract M3 §1).
           # libstdc++/libgcc_s are statically linked (box64 wraps neither, APK
           # ships neither) — their PRESENCE as DT_NEEDED is a hard failure.
-          for lib in libSDL2-2.0.so.0 libavcodec_sos.so libavutil_sos.so libfreetype_sos.so libc; do
+          # NOTE: readelf prints the SONAME inside brackets — the bracket-anchored
+          # greps below need the FULL lib name (bare "libc" would look for the
+          # literal "[libc]" and never match the real "[libc.so.6]").
+          for lib in libSDL2-2.0.so.0 libavcodec_sos.so libavutil_sos.so libfreetype_sos.so libc.so.6; do
             echo "$NEEDS" | grep -q "NEEDED.*\[$lib\]" || BAD=1
           done
           if echo "$NEEDS" | grep -Eq 'NEEDED.*\[lib(stdc\+\+|gcc_s)'; then BAD=1; fi
@@ -406,7 +409,7 @@ jobs:
           grep -q "SOS_HOST_FREETYPE_OK version="           native.log || REASON="$REASON missing-marker:SOS_HOST_FREETYPE_OK"
           grep -q "SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=" native.log || REASON="$REASON missing-marker:SOS_HOST_FFMPEG_OK"
           grep -q "SOS_HOST_MISSING_GAME_FILES"             native.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
-          grep -q "reason=no-eboot"                         native.log || REASON="$REASON missing-marker:reason=no-eboot"
+          grep -q "reason=no-eboot$"                        native.log || REASON="$REASON missing-marker:reason=no-eboot"
           grep -q "SOS_HOST_M3_SKIPPED"                     native.log && REASON="$REASON unexpected-marker:SOS_HOST_M3_SKIPPED"
           grep -q "SOS_HOST_M3_FAIL"                        native.log && REASON="$REASON unexpected-marker:SOS_HOST_M3_FAIL"
           grep -qi "symbol not found"                       native.log && REASON="$REASON symbol-not-found"
@@ -775,7 +778,7 @@ jobs:
           grep -q "SOS_HOST_FREETYPE_OK version="           host_box64_m3.log || REASON="$REASON missing-marker:SOS_HOST_FREETYPE_OK"
           grep -q "SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=" host_box64_m3.log || REASON="$REASON missing-marker:SOS_HOST_FFMPEG_OK"
           grep -q "SOS_HOST_MISSING_GAME_FILES"             host_box64_m3.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
-          grep -q "reason=no-eboot"                         host_box64_m3.log || REASON="$REASON missing-marker:reason=no-eboot"
+          grep -q "reason=no-eboot$"                        host_box64_m3.log || REASON="$REASON missing-marker:reason=no-eboot"
           grep -qi "symbol not found"                       host_box64_m3.log && REASON="$REASON symbol-not-found"
           grep -q  "error while loading shared libraries"   host_box64_m3.log && REASON="$REASON loader-error"
           grep -q  "Fatal signal"                           host_box64_m3.log && REASON="$REASON fatal-signal-in-log"
@@ -838,7 +841,7 @@ jobs:
           grep -q "SOS_HOST_FREETYPE_OK version="           host_box64_m3_sf.log || REASON="$REASON missing-marker:SOS_HOST_FREETYPE_OK"
           grep -q "SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=" host_box64_m3_sf.log || REASON="$REASON missing-marker:SOS_HOST_FFMPEG_OK"
           grep -q "SOS_HOST_MISSING_GAME_FILES"             host_box64_m3_sf.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
-          grep -q "reason=no-eboot"                         host_box64_m3_sf.log || REASON="$REASON missing-marker:reason=no-eboot"
+          grep -q "reason=no-eboot$"                        host_box64_m3_sf.log || REASON="$REASON missing-marker:reason=no-eboot"
           grep -qi "symbol not found"                       host_box64_m3_sf.log && REASON="$REASON symbol-not-found"
           grep -q  "error while loading shared libraries"   host_box64_m3_sf.log && REASON="$REASON loader-error"
           grep -q  "Fatal signal"                           host_box64_m3_sf.log && REASON="$REASON fatal-signal-in-log"
