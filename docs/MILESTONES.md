@@ -48,12 +48,39 @@ com a task 1-b (APK usa o mesmo payload como `libpayload64.so`). Os marcadores
 podem ser removidos/renomeados (colisão 1-a×1-b já ocorrida e mesclada — ver
 `docs/PROGRESS.md`).
 
-## M2 — Núcleo AnyPS5 em Linux x86-64 `[ ]`
+## M2 — Núcleo AnyPS5 em Linux x86-64 `[~]`
 
 **Objetivo (reformulado — ver PLAN.md):** host AnyPS5 compila e roda em Linux x86-64
-(relinker `--linux`, entrada de host não-Win32 com SDL2), pronto para rodar sob box64.
+(relinker sem `--windows` = saída Linux nativa; entrada de host não-Win32 com SDL2),
+pronto para rodar sob box64. Espec/contrato: `docs/M2-LINUX-HOST.md` (M2-a).
 Critérios: binário Linux x86-64 construído no CI; roda sob box64 (runner arm64) até a
-tela de "arquivos do jogo ausentes" sem crash (execução real validada em CI).
+tela de "arquivos do jogo ausentes" sem crash (execução real validada em CI);
+teste no aparelho com APK do host (critério 3).
+
+Sub-etapas:
+- [x] M2-a (2026-10-05): mapeamento do launcher Win32 + spec do `anyhost` + descoberta
+  de que o relinker já tem caminho Linux nativo (`docs/M2-LINUX-HOST.md`).
+- [x] M2-b (2026-10-05, entregue — aceite = job `host-linux` verde): implementação do
+  `anyhost` (host/anyhost.cpp + superprojeto CMake standalone + patch 0002) com
+  validação de build/execução NATIVA x86-64 local (dir vazio →
+  `SOS_HOST_MISSING_GAME_FILES reason=no-eboot`, exit 1).
+- [x] M2-c (2026-10-05, entregue — aceite = CI verde): CI — job `host-linux` (build
+  x86-64 estático anyhost+relinker, smoke nativo) + job `box64-arm64` rodando o host
+  sob box64 até o marker com exit 1 limpo.
+- [x] M2-d (2026-10-05, entregue — aceite = on-device): APK de teste (botão M2 +
+  `libanyhost64.so` como jniLibs).
+- [x] M2-e (2026-10-05): revisão crítica independente + loop de correção — patch
+  re-aplicado e re-buildado em worktree limpo do upstream pinado, smokes reproduzidos,
+  build.yml/MainActivity validados programaticamente; doc atualizado com os desvios
+  aprovados (offscreen headless, duplo-fail SDL2, relink sem restart); GO emitido.
+
+Critérios de aceite:
+1. [ ] Binário Linux x86-64 (anyhost + relinker, estáticos) construído no CI (job
+   `host-linux`) com smoke nativo verde.
+2. [ ] Host sob box64 no runner arm64 atinge `SOS_HOST_MISSING_GAME_FILES` com exit 1
+   limpo (nenhum `Fatal signal`) — execução real validada em CI.
+3. [ ] APK de teste executa o host no aparelho (motorola edge 30 fusion, Android 14):
+   veredito verde do app (marker + exit 1 + SDL2 OK, sem crash no logcat).
 
 ## M3 — Integração de libs no runtime box64/Android `[ ]`
 

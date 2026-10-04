@@ -7,6 +7,14 @@ local.properties
 # jniLibs binaries are produced by CI (scripts/ci-build-box64.sh) and must not be committed
 app/src/main/jniLibs/arm64-v8a/*.so
 
+# Directories created by the M2 CI jobs (job host-linux / consumers) when the
+# steps are reproduced locally — never commit upstream clones or host builds
+sos-src/
+build-host/
+ci-empty/
+host-x64/
+artifact-host/
+
 # Keys
 *.jks
 *.keystore

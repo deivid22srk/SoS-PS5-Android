@@ -407,3 +407,100 @@ aceito pelo parser do GitHub Actions).
 Link do run: https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37220048527
 
 Pendente do M1: critério 3 (execução no aparelho do usuário) — `docs/ON_DEVICE_TEST.md`.
+
+---
+
+# M2 — Núcleo AnyPS5 em Linux x86-64 (2026-10-05)
+
+Contrato: `docs/M2-LINUX-HOST.md`. Sub-agentes: 2-b (host), 2-c (CI), 2-d (app),
+2-e (revisor crítico independente — veredito **GO**, 0 defeitos de código, 4
+correções documentais/higiene aplicadas e re-validadas).
+
+## Task 2-a — Mapeamento do launcher Win32 + spec do host (2026-10-05)
+
+- Mapeado `launcher/launcher.cpp` (`wWinMain`, tabela completa em
+  `docs/M2-LINUX-HOST.md` §1): validação de arquivos → preparo via relinker →
+  execução. A "tela de arquivos ausentes" é a validação do launcher (mensagens
+  "The game files were not found" / "Some game files are missing").
+- **Descoberta-chave**: o relinker upstream JÁ tem caminho Linux nativo — sem
+  `--windows`, `main.cpp:72` imprime `System: Linux` e usa `LinuxElfPatcher`
+  (`main.cpp:100`); saída = ELF executável com `DT_RUNPATH $ORIGIN/libs`. O
+  CMake do relinker é standalone-incluível; não depende de SDL2/ffmpeg.
+- Submódulos pinados: SDL2 `4b69833bc54abf3dd3288d4aa7afbba527775e5b`.
+- Risco "camada Linux parcial" do PLAN.md atualizado para MITIGADO PARCIALMENTE.
+
+## Task 2-b — Host Linux `anyhost` (2026-10-05)
+
+- `patches/0002-sos-linux-host.patch` (sobre upstream pinado): adiciona
+  `host/anyhost.cpp` (347 linhas) + `host/CMakeLists.txt` (superprojeto
+  standalone; NÃO altera CMake raiz; só `host/*` no patch).
+- `anyhost`: CLI `--game-dir/--version/--help`; SDL2 real
+  (`SDL_Init(VIDEO|GAMECONTROLLER)` com fallback interno dummy); markers
+  `SOS_HOST_STARTED` / `SOS_HOST_SDL2_OK driver=<n>` /
+  `SOS_HOST_MISSING_GAME_FILES reason=<r>` / `SOS_HOST_VALIDATE_OK` /
+  `SOS_HOST_SDL2_FAIL` / `SOS_HOST_INTERNAL_ERROR`; ordem de validação idêntica
+  ao `wWinMain` (eboot.bin→eboot.elf → magic ELF → sce_sys → Media → libs/ →
+  tools/relinker); mensagens PT-BR do launcher; exit 1 nos missing; exit 2
+  interno; sem sinais/abort.
+- SDL2 estática mínima dummy-only (X11/Wayland/KMSDRM/Vulkan/Render OFF).
+  Nota: SDL2 2.33 traz o driver headless `offscreen` ligado por default — sem
+  env ele é escolhido antes do dummy; tratado como headless (mesmo tratamento).
+- Validação local (host x86-64, g++ 14.2, cmake 4.4.4): AMBOS `anyhost` e
+  `relinker` saem `ELF 64-bit LSB executable, x86-64, statically linked`.
+  Smokes (dir vazio → `reason=no-eboot`; +eboot falso → `no-sce_sys`; +sce_sys
+  +Media → `no-libs`; +libs → `no-relinker`; magic MZ → `not-elf`;
+  `--help/--version` exit 0; opção inválida exit 2): TODOS com exit limpo,
+  zero sinais. Relinker sem args: usage em stderr, exit 1 limpo.
+- Autocontenção provada: patch aplicado em worktree limpo do SHA pinado →
+  configure+build do zero → verde; smokes reproduzidos.
+- Evidência independente do orquestrador: smoke re-executado
+  (`exit=1`, 3 markers, PT-BR) — PASS.
+
+## Task 2-c — CI (2026-10-05)
+
+- `build.yml` (+328/−2): novo job `host-linux` (ubuntu-latest): checkout
+  upstream pinado + SDL2 pinada (actions/checkout standalone), patch 0002
+  idempotente (falha ⇒ `SOS_PATCH_FAILED`), build, `file` exige
+  `x86-64 + statically linked` (senão `HOST_NOT_STATIC`), smoke nativo HARD
+  (RC==1 + `SOS_HOST_MISSING_GAME_FILES reason=no-eboot` + `SOS_HOST_SDL2_OK` +
+  `SOS_HOST_STARTED` + sem `Fatal signal`; senão `HOST_NATIVE_SMOKE_FAILED`),
+  artifact `host-linux-x64` (flat, if-no-files-found: error).
+- `box64-arm64` estendido (`needs: host-linux`): steps M1 preservados verbatim
+  (regressão); novos: download do artifact + `chmod +x`; HARD assert do host
+  sob box64 (`BOX64_LOG=INFO`, RC==1, 3 markers, sem Fatal signal; falha ⇒
+  `HOST_UNDER_BOX64_FAILED` + exit 1; sucesso ⇒ `HOST_UNDER_BOX64_PASSED`);
+  relinker sob box64 = smoke soft (informativo). Logs no summary e no artifact.
+- `apk` ajustado (`needs: host-linux`): cp do anyhost →
+  `app/src/main/jniLibs/arm64-v8a/libanyhost64.so` + `chmod` + `file` no
+  summary (fora do `ci-build-box64.sh`, contrato do script preservado).
+- Validações: PyYAML ~95 asserts PASS; `bash -n` nos 24 run blocks; M1
+  comprovadamente preservado (diff estrutural step-a-step).
+
+## Task 2-d — App Android + doc on-device (2026-10-05)
+
+- `MainActivity.java`: refatoração da lógica comum (`execUnderBox64` +
+  `ExecResult`) SEM mudar comportamento M1 (textos byte-idênticos verificados
+  por diff de literais); novo botão "M2: Rodar host AnyPS5 (validação)" roda
+  `libbox64.so libanyhost64.so --game-dir <filesDir>/game` (dir vazio criado);
+  veredito VERDE ⇔ `SOS_HOST_MISSING_GAME_FILES` && `SOS_HOST_SDL2_OK` &&
+  exit==1 (texto PT-BR explica que é o esperado; evidência SDL2 mostrada);
+  exit ≥128 decodificado (`explainSignalExit`); watchdog 120 s; espelho
+  logcat tag `SOSBox64`; zero androidx, APIs ≤28.
+- `docs/ON_DEVICE_TEST.md`: seção 7 "Teste M2" (bloco NÃO É BUG, passo a passo,
+  aparência do sucesso, logcat, tabela de anormalidades, próximo passo).
+
+## Task 2-e — Revisão crítica independente (2026-10-05)
+
+- Veredito: **GO**. Nenhum defeito de código (patch, build.yml, app).
+- Corrigido: F1 contrato atrasado vs código (offscreen headless, duplo-fail
+  SDL2 → INTERNAL_ERROR/exit 2, relink sem loop de restart — agora
+  documentados no `M2-LINUX-HOST.md`); F2 doc on-device previa `driver=dummy`
+  no aparelho quando o correto/observado é `offscreen` (dummy também verde);
+  F3 datas/status do MILESTONES.md; F4 `.gitignore` +5 dirs de reprodução.
+- Registrados: needs-gating (host-linux falho skipa M1 nesse run — intencional);
+  F7 (reason≠no-eboot pode ficar verde no futuro — decisão M3+).
+
+## Pendente para fechar o M2
+
+1. CI verde (critérios 1 e 2) — aguardando push.
+2. Teste no aparelho do usuário com o APK (critério 3) — `docs/ON_DEVICE_TEST.md` §7.

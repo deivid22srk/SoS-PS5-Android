@@ -1,0 +1,464 @@
+From d154358ef5d54b449ffa5c89b0a392fa3a5ac84e Mon Sep 17 00:00:00 2001
+From: SoS Port Bot <bot@localhost>
+Date: Sun, 4 Oct 2026 18:38:18 +0000
+Subject: [PATCH] =?UTF-8?q?Add=20Linux=20host=20(anyhost)=20with=20minimal?=
+ =?UTF-8?q?=20SDL2=20=E2=80=94=20M2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+host/anyhost.cpp: minimal Linux host of the AnyPS5 layer, mirroring the
+Win32 launcher flow (wWinMain @ 757692f6): CLI (--game-dir/--version/
+--help), real SDL2 init (VIDEO|GAMECONTROLLER) with forced dummy-driver
+retry for headless/CI/Android, greppable markers (SOS_HOST_STARTED,
+SOS_HOST_SDL2_OK, SOS_HOST_MISSING_GAME_FILES, SOS_HOST_VALIDATE_OK,
+SOS_HOST_SDL2_FAIL, SOS_HOST_INTERNAL_ERROR), strict validation order
+(eboot.bin/eboot.elf -> ELF magic -> sce_sys -> Media -> libs ->
+tools/relinker), PT-BR user messages equivalent to the Win32 texts,
+SDL_ShowSimpleMessageBox only when a real video driver is active,
+exit 1 for missing files / 2 for internal errors, no abort()/signals.
+Post-validation path (relink + exec of sos_runtime with logs, app0
+symlinks) is present and guarded by SOS_HOST_RELINK_START; not
+exercised in M2 (requires a game dump).
+
+host/CMakeLists.txt: standalone superproject (no root CMakeLists
+changes) building SDL2 static minimal dummy-first (X11/Wayland/KMSDRM/
+OpenGL/GLES/Vulkan/Render off; Joystick/Haptic/Hidapi on; STATIC_PIC on)
+and core/relinker statically via the root CMakeLists linker-flag
+save/clear/restore pattern; anyhost linked to SDL2-static with
+-static -static-libgcc -static-libstdc++; BUILD_TESTING off.
+
+Evidence: both binaries build as 'ELF 64-bit LSB executable, x86-64,
+statically linked' (gcc 14.2, CMake 4.4.4, Ninja); smokes exercise all
+missing-file reasons plus relinker usage exit.
+---
+ host/CMakeLists.txt |  62 ++++++++
+ host/anyhost.cpp    | 347 ++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 409 insertions(+)
+ create mode 100644 host/CMakeLists.txt
+ create mode 100644 host/anyhost.cpp
+
+diff --git a/host/CMakeLists.txt b/host/CMakeLists.txt
+new file mode 100644
+index 0000000..c123dfa
+--- /dev/null
++++ b/host/CMakeLists.txt
+@@ -0,0 +1,62 @@
++# host/CMakeLists.txt — superprojeto standalone do host Linux (anyhost), M2.
++#
++# Constrói, SEM tocar no CMakeLists.txt raiz do upstream:
++#   anyhost   — host mínimo deste diretório (link estático SDL2-static)
++#   relinker  — alvo herdado de core/relinker do próprio clone (estático)
++#   SDL2      — submódulo 3rdparty/SDL2 com configuração mínima dummy-first
++#
++# Contrato: sos-ps5-android/docs/M2-LINUX-HOST.md seção 2.4.
++# Uso: cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Release
++cmake_minimum_required(VERSION 3.20)
++project(AnyHost CXX)
++
++set(CMAKE_CXX_STANDARD 20)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++
++# Testes do relinker (Python/CTest) ficam fora do escopo do M2.
++set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
++
++# Raiz do clone upstream — este arquivo vive em <upstream>/host.
++get_filename_component(ANYPS5_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
++
++# ---- SDL2 estática MÍNIMA (headless-first; X11/Vulkan entram no M3/M5) ----
++set(SDL_SHARED   OFF CACHE BOOL "" FORCE)
++set(SDL_STATIC   ON  CACHE BOOL "" FORCE)
++set(SDL_TEST     OFF CACHE BOOL "" FORCE)
++set(SDL_X11      OFF CACHE BOOL "" FORCE)
++set(SDL_WAYLAND  OFF CACHE BOOL "" FORCE)
++set(SDL_KMSDRM   OFF CACHE BOOL "" FORCE)
++set(SDL_OPENGL   OFF CACHE BOOL "" FORCE)
++set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
++set(SDL_VULKAN   OFF CACHE BOOL "" FORCE)
++set(SDL_RENDER   OFF CACHE BOOL "" FORCE)
++set(SDL_JOYSTICK ON  CACHE BOOL "" FORCE)
++set(SDL_HAPTIC   ON  CACHE BOOL "" FORCE)
++set(SDL_HIDAPI   ON  CACHE BOOL "" FORCE)
++set(SDL_SENSOR   OFF CACHE BOOL "" FORCE)
++set(SDL_POWER    OFF CACHE BOOL "" FORCE)
++set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
++
++# Flags de linker para os NOSSOS executáveis (mesmo padrão do CMake raiz:
++# linhas 23 e 40-43 — "-static -static-libgcc -static-libstdc++"), sem vazar
++# para o sub-build da SDL2: o raiz salva/limpa/restaura CMAKE_EXE_LINKER_FLAGS
++# ao redor de add_subdirectory(3rdparty/SDL2) e nós replicamos o padrão.
++# Versão LISTA para target_link_options e versão STRING para CMAKE_EXE_LINKER_FLAGS.
++set(ANYPS5_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
++set(ANYPS5_EXE_LINK_OPTIONS -static -static-libgcc -static-libstdc++)
++
++set(ANYPS5_SAVED_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
++set(CMAKE_EXE_LINKER_FLAGS "")
++add_subdirectory("${ANYPS5_ROOT}/3rdparty/SDL2" 3rdparty/SDL2-build)
++set(CMAKE_EXE_LINKER_FLAGS "${ANYPS5_SAVED_EXE_LINKER_FLAGS}")
++
++# relinker também estático: flag setada ANTES de add_subdirectory (o alvo
++# 'relinker' herda CMAKE_EXE_LINKER_FLAGS) e restaurada depois.
++set(RELINKER_SAVED_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
++set(CMAKE_EXE_LINKER_FLAGS "${ANYPS5_EXE_LINKER_FLAGS}")
++add_subdirectory("${ANYPS5_ROOT}/core/relinker" core/relinker-build)
++set(CMAKE_EXE_LINKER_FLAGS "${RELINKER_SAVED_EXE_LINKER_FLAGS}")
++
++add_executable(anyhost anyhost.cpp)
++target_link_libraries(anyhost PRIVATE SDL2-static)
++target_link_options(anyhost PRIVATE ${ANYPS5_EXE_LINK_OPTIONS})
+diff --git a/host/anyhost.cpp b/host/anyhost.cpp
+new file mode 100644
+index 0000000..4f60942
+--- /dev/null
++++ b/host/anyhost.cpp
+@@ -0,0 +1,347 @@
++// host/anyhost.cpp — host Linux mínimo do AnyPS5 (SoS-PS5, marco M2).
++//
++// Porta do fluxo do launcher Win32 (launcher/launcher.cpp @ 757692f6) para
++// Linux x86-64 estático, headless-first: em vez de janelas GDI+, a "tela" do
++// host é o stdout (que o app Android espelha no logcat, igual ao PoC M1) ou
++// uma SDL_ShowSimpleMessageBox quando existir driver de vídeo real.
++//
++// Contrato: sos-ps5-android/docs/M2-LINUX-HOST.md seção 2.
++//   Markers (stdout, uma linha, ASCII, greppable):
++//     SOS_HOST_STARTED                        — primeira linha do host
++//     SOS_HOST_SDL2_OK driver=<nome>          — SDL2 inicializada (real ou dummy)
++//     SOS_HOST_MISSING_GAME_FILES reason=<r>  — arquivos do jogo ausentes
++//     SOS_HOST_VALIDATE_OK                    — todos os arquivos presentes
++//     SOS_HOST_SDL2_FAIL reason=<msg>         — SDL2 falhou também com dummy
++//     SOS_HOST_INTERNAL_ERROR reason=<r>      — erro interno (exit 2)
++//   Exit codes: 0 = além da validação; 1 = arquivos ausentes (resultado
++//   ESPERADO no M2); 2 = erro interno. PROIBIDO abort()/exit(-1)/sinais.
++//
++// Paridade com wWinMain (launcher.cpp:869-1062) indicada nos comentários.
++
++#include <SDL.h>
++
++#include <fcntl.h>
++#include <sys/wait.h>
++#include <unistd.h>
++
++#include <cerrno>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <filesystem>
++#include <fstream>
++#include <iostream>
++#include <string>
++#include <vector>
++
++namespace fs = std::filesystem;
++
++namespace {
++
++// launcher.cpp:17-24 — LAUNCHER_NAME/LAUNCHER_TITLE/LAUNCHER_REQUIRED/kRuntime.
++constexpr const char* kLauncherName = "God of War Sons of Sparta";
++constexpr const char* kTitle = "SonsOfSparta-PS5 Native";
++constexpr const char* kRelinkerPath = "tools/relinker"; // Win32: tools/relinker.exe
++constexpr const char* kRuntimeName = "sos_runtime";     // Win32: sos_runtime.exe
++
++bool g_driverIsDummy = true; // driver headless => "tela" é o stdout (CI/ARM64/Android)
++
++// Drivers headless: "dummy" é o fallback do contrato; "offscreen" é o driver
++// headless que a SDL 2.33 compila por default (SDL_OFFSCREEN) e é o que sobra
++// em CI/ARM64/Android com X11/Wayland/KMSDRM desligados. Nenhum dos dois tem
++// tela real — a "tela" do host é o stdout (espelhado no logcat pelo app M2-d).
++bool driverIsHeadless(const char* driver) {
++    return driver != nullptr &&
++           (std::strcmp(driver, "dummy") == 0 || std::strcmp(driver, "offscreen") == 0);
++}
++
++// SDL_GetError pode conter espaços/quebras de linha; markers são uma linha só.
++std::string oneLine(const char* raw) {
++    std::string text = (raw != nullptr && raw[0] != '\0') ? raw : "unknown";
++    for (char& c : text)
++        if (c == ' ' || c == '\n' || c == '\r' || c == '\t') c = '_';
++    return text;
++}
++
++void printMarker(const std::string& marker) { std::cout << marker << std::endl; }
++
++// Paridade com Fail() do launcher (MessageBoxW): texto humano para o usuário.
++// No driver dummy não há tela — o app Android espelha o stdout no logcat (M1).
++void showHumanMessage(const std::string& text) {
++    std::cout << text << std::endl;
++    if (!g_driverIsDummy) {
++        // Tela real (desktop): mesma janela de erro do launcher Win32.
++        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, kTitle, text.c_str(), nullptr);
++    }
++}
++
++// Exit code 1 do contrato: arquivos ausentes/não-descriptografados, LIMPO
++// (marker presente, sem sinal). É o resultado esperado no M2.
++[[noreturn]] void failMissing(const std::string& reason, const std::string& text) {
++    showHumanMessage(text);
++    printMarker("SOS_HOST_MISSING_GAME_FILES reason=" + reason);
++    SDL_Quit();
++    std::exit(1);
++}
++
++// Exit code 2 do contrato: erro interno, sempre com marker.
++[[noreturn]] void failInternal(const std::string& reason, const std::string& text = {}) {
++    if (!text.empty()) showHumanMessage(text);
++    printMarker("SOS_HOST_INTERNAL_ERROR reason=" + reason);
++    SDL_Quit();
++    std::exit(2);
++}
++
++void printUsage(std::ostream& out) {
++    out << "Uso: anyhost [--game-dir <pasta>] [--version] [--help]\n"
++        << "\n"
++        << "  --game-dir <pasta>  Pasta do jogo (padrao: diretorio atual).\n"
++        << "  --version           Mostra a versao e sai.\n"
++        << "  --help              Mostra esta ajuda e sai.\n"
++        << "\n"
++        << "Valida os arquivos do jogo (eboot.elf/eboot.bin, sce_sys, Media, libs,\n"
++        << "tools/relinker), prepara o executavel com o relinker e roda o jogo.\n"
++        << "Markers de automacao: SOS_HOST_STARTED, SOS_HOST_SDL2_OK,\n"
++        << "SOS_HOST_MISSING_GAME_FILES, SOS_HOST_VALIDATE_OK, SOS_HOST_SDL2_FAIL,\n"
++        << "SOS_HOST_INTERNAL_ERROR.\n";
++}
++
++// launcher.cpp:898 (IsElf): magic 7F 45 4C 46 nas primeiras 4 bytes.
++// Qualquer falha de leitura conta como "não é ELF" (mesma semântica do Win32).
++bool isElf(const fs::path& path) {
++    std::ifstream file(path, std::ios::binary);
++    if (!file) return false;
++    unsigned char magic[4] = {};
++    file.read(reinterpret_cast<char*>(magic), sizeof(magic));
++    return file.gcount() == 4 && magic[0] == 0x7F && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F';
++}
++
++// Roda um programa-filho redirecionando stdout/stderr para arquivos de log
++// (paridade com RunHidden do launcher.cpp:976 e com os handles do jogo em
++// launcher.cpp:994-1002). Retorna o exit code do filho, ou -1 se fork/exec/
++// wait falhar (o chamador converte em erro interno — nunca gera sinal/abort).
++int runLogged(const fs::path& exe, const std::vector<std::string>& args,
++              const fs::path& outLog, const fs::path& errLog) {
++    std::vector<char*> argv;
++    argv.push_back(const_cast<char*>(exe.c_str()));
++    for (const std::string& arg : args) argv.push_back(const_cast<char*>(arg.c_str()));
++    argv.push_back(nullptr);
++
++    const pid_t pid = ::fork();
++    if (pid < 0) return -1;
++    if (pid == 0) {
++        // Filho: mesmos efeitos de STARTF_USESTDHANDLES no launcher Win32.
++        const int out = ::open(outLog.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
++        const int err = ::open(errLog.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
++        if (out >= 0) (void)::dup2(out, STDOUT_FILENO);
++        if (err >= 0) (void)::dup2(err, STDERR_FILENO);
++        ::execv(exe.c_str(), argv.data());
++        ::_exit(127); // só alcançado se execv falhar (ex.: binário ausente)
++    }
++    int status = 0;
++    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
++    if (WIFEXITED(status)) return WEXITSTATUS(status);
++    return -1; // filho morreu por sinal; aqui só registramos e falhamos limpo
++}
++
++// Paridade com LinkIntoApp0 (launcher.cpp:990): expõe Media/ e sce_sys/ dentro
++// de app0/ — o executável relinkado espera libs/ + app0/ ao seu lado (o próprio
++// relinker imprime esse layout esperado).
++void linkIntoApp0(const fs::path& gameDir, const char* name) {
++    std::error_code ec;
++    const fs::path app0 = gameDir / "app0";
++    fs::create_directories(app0, ec);
++    const fs::path link = app0 / name;
++    if (fs::is_symlink(link, ec)) {
++        fs::remove(link, ec);
++    } else if (fs::exists(link, ec)) {
++        fs::remove_all(link, ec); // run anterior materializou o caminho
++    }
++    fs::create_symlink(std::string("../") + name, link, ec);
++    if (ec) failInternal("app0-link-failed", "Falha ao criar " + link.string() + ": " + ec.message());
++}
++
++// launcher.cpp:992-1062 — roda o jogo com logs em logs/game.log + journal em
++// logs/launcher.log. Simplificação do M2 (caminho não exercido: exige dump do
++// jogo): execução única, sem o laço de reinício em crash do launcher.
++int runGame(const fs::path& gameDir, const fs::path& runtime) {
++    const auto started = std::chrono::steady_clock::now();
++    const int code = runLogged(runtime, {}, gameDir / "logs" / "game.log", gameDir / "logs" / "game.err");
++    const long long secs = std::chrono::duration_cast<std::chrono::seconds>(
++                               std::chrono::steady_clock::now() - started).count();
++    char line[160];
++    std::snprintf(line, sizeof(line), "attempt 1: ended, exit code 0x%x after %lld s",
++                  static_cast<unsigned>(code < 0 ? 0xFFFFFFFFu : static_cast<unsigned>(code)), secs);
++    std::ofstream journal(gameDir / "logs" / "launcher.log", std::ios::app);
++    if (journal) journal << line << "\n";
++    return code;
++}
++
++} // namespace
++
++int main(int argc, char* argv[]) {
++    // Primeira linha do host (contrato 2.2) — antes de qualquer outra coisa.
++    printMarker("SOS_HOST_STARTED");
++
++    // ---- CLI (contrato 2.1) ----
++    // launcher.cpp:878-880 usa a pasta do exe como diretório de trabalho; aqui
++    // o equivalente é --game-dir com default = diretório atual.
++    fs::path gameDir = fs::current_path();
++    for (int i = 1; i < argc; ++i) {
++        const std::string arg = argv[i];
++        if (arg == "--game-dir") {
++            if (i + 1 >= argc) {
++                std::cerr << "--game-dir exige uma pasta\n";
++                printUsage(std::cerr);
++                failInternal("usage-missing-value", {});
++            }
++            gameDir = argv[++i];
++        } else if (arg == "--version") {
++            std::cout << "anyhost " << SDL_MAJOR_VERSION << "." << SDL_MINOR_VERSION << "."
++                      << SDL_PATCHLEVEL << " (host Linux AnyPS5, SoS-PS5-Android M2)\n"
++                      << std::endl;
++            return 0;
++        } else if (arg == "--help" || arg == "-h") {
++            printUsage(std::cout);
++            return 0;
++        } else {
++            std::cerr << "opcao desconhecida: " << arg << "\n";
++            printUsage(std::cerr);
++            failInternal("usage-unknown-option", {});
++        }
++    }
++    std::error_code ec;
++    gameDir = fs::absolute(gameDir, ec); // só lexical; pasta inexistente cai na validação
++
++    // ---- SDL2 (contrato 2.2): evidência real, não decorativa ----
++    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
++        const std::string firstError = oneLine(SDL_GetError());
++        // Fallback headless (CI ARM64 / Android / container sem display):
++        // força o driver dummy e tenta de novo antes de declarar falha fatal.
++        ::setenv("SDL_VIDEODRIVER", "dummy", 1);
++        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
++            const std::string dummyError = oneLine(SDL_GetError());
++            printMarker("SOS_HOST_SDL2_FAIL reason=" + dummyError);
++            failInternal("sdl2-init-failed",
++                         "Falha ao inicializar o SDL2.\n\nSem driver: " + firstError +
++                             "\nCom driver dummy: " + dummyError);
++        }
++    }
++    const char* driver = SDL_GetCurrentVideoDriver();
++    g_driverIsDummy = driverIsHeadless(driver);
++    printMarker(std::string("SOS_HOST_SDL2_OK driver=") + (driver != nullptr ? driver : "unknown"));
++
++    // ---- Validação dos arquivos (contrato 2.3; ordem paridade com wWinMain) ----
++    // launcher.cpp:882-897 — eboot.bin OU eboot.elf; sem os dois => tela-alvo.
++    fs::path chosen; // eboot escolhido (eboot.bin ou eboot.elf descriptografado)
++    const fs::path ebootBin = gameDir / "eboot.bin";
++    const fs::path ebootElf = gameDir / "eboot.elf";
++    if (fs::exists(ebootBin, ec)) {
++        chosen = ebootBin;
++    } else if (fs::exists(ebootElf, ec)) {
++        chosen = ebootElf;
++    }
++    if (chosen.empty()) {
++        // launcher.cpp:893-897: "The game files were not found." (tela-alvo M2)
++        failMissing("no-eboot",
++                    "Os arquivos do jogo não foram encontrados.\n\n"
++                    "Copie seus próprios arquivos descriptografados do " + std::string(kLauncherName) +
++                        " (eboot.elf ou eboot.bin, sce_sys, sce_module, ...) para a mesma pasta deste "
++                        "programa e inicie novamente.\n\nPasta: " + gameDir.string());
++    }
++    if (!isElf(chosen)) {
++        // launcher.cpp:898-901: executável ainda criptografado.
++        failMissing("not-elf",
++                    "O executável do jogo não está descriptografado. "
++                    "Forneça um eboot.elf descriptografado junto a este programa.");
++    }
++    // launcher.cpp:902-916 — obrigatórios LAUNCHER_REQUIRED = "sce_sys;Media".
++    if (!fs::is_directory(gameDir / "sce_sys", ec)) {
++        failMissing("no-sce_sys",
++                    "Alguns arquivos do jogo estão ausentes (sce_sys). "
++                    "Copie a pasta completa do jogo para junto deste programa.");
++    }
++    if (!fs::is_directory(gameDir / "Media", ec)) {
++        failMissing("no-media",
++                    "Alguns arquivos do jogo estão ausentes (Media). "
++                    "Copie a pasta completa do jogo para junto deste programa.");
++    }
++    // launcher.cpp:917-920 — programas: pasta libs/ e tools/relinker(.exe).
++    if (!fs::is_directory(gameDir / "libs", ec)) {
++        failMissing("no-libs",
++                    "Arquivos de programa estão ausentes (pastas libs e tools). "
++                    "Extraia o download completo novamente.");
++    }
++    if (!fs::is_regular_file(gameDir / kRelinkerPath, ec)) {
++        failMissing("no-relinker",
++                    "Arquivos de programa estão ausentes (pastas libs e tools). "
++                    "Extraia o download completo novamente.");
++    }
++
++    printMarker("SOS_HOST_VALIDATE_OK");
++
++    // ---- Passos 9-11 do mapeamento (seção 1): preparar + relinkar + rodar ----
++    // ATENÇÃO: caminho NÃO exercido no M2 (exige dump real do jogo). Presente,
++    // comentado e guardado por SOS_HOST_RELINK_START para o M4/M7.
++    printMarker("SOS_HOST_RELINK_START");
++
++    fs::create_directories(gameDir / "logs", ec);
++    if (ec) failInternal("create-logs-failed", "Falha ao criar a pasta logs/: " + ec.message());
++    fs::create_directories(gameDir / "prep", ec);
++    if (ec) failInternal("create-prep-failed", "Falha ao criar a pasta prep/: " + ec.message());
++
++    // launcher.cpp:884-892 (ConvertOrCopy): prep/eboot.elf <- eboot escolhido.
++    // No Linux o arquivo já é ELF descriptografado, então basta copiar quando
++    // estiver velho ou ausente (o caminho ExtractSelf do Win32 não se aplica).
++    const fs::path prepElf = gameDir / "prep" / "eboot.elf";
++    bool stale = !fs::exists(prepElf, ec) || ec;
++    if (!stale) {
++        const auto dstTime = fs::last_write_time(prepElf, ec);
++        const auto srcTime = fs::last_write_time(chosen, ec);
++        stale = ec || dstTime < srcTime;
++    }
++    if (stale) {
++        fs::copy_file(chosen, prepElf, fs::copy_options::overwrite_existing, ec);
++        if (ec) failInternal("copy-eboot-failed", "Falha ao copiar " + chosen.string() + " para prep/eboot.elf: " + ec.message());
++    }
++
++    // launcher.cpp:971-975 SEM --windows/--windows-diagnostics (caminho Linux do
++    // relinker, main.cpp:72 imprime "System: Linux"); +x no output: chmod abaixo.
++    const fs::path runtime = gameDir / kRuntimeName;
++    const std::vector<std::string> relinkerArgs = {
++        "--registry", "--skip-syscall-check",
++        "--exclude-sce-module", "CommonDialog.prx",
++        "--exclude-sce-module", "VoiceInputPlugin.prx",
++        "--exclude-sce-module", "libSceNpCppWebApi.prx",
++        "--defer-sce-module", "PSN.prx",
++        "--defer-sce-module", "SaveData.prx",
++        "--defer-sce-module", "lib_burst_generated.prx",
++        prepElf.string(), runtime.string(),
++    };
++    const int relinkCode = runLogged(gameDir / kRelinkerPath, relinkerArgs,
++                                     gameDir / "logs" / "prepare.log", gameDir / "logs" / "prepare.err.log");
++    if (relinkCode != 0 || !fs::exists(runtime, ec)) {
++        // launcher.cpp:977-982 — "The game could not be prepared from your files."
++        failInternal("relink-failed",
++                     "Não foi possível preparar o jogo a partir dos seus arquivos (código " +
++                         std::to_string(relinkCode) + ").\n\nVeja logs/prepare.log. Certifique-se de que "
++                         "eboot.elf é o executável descriptografado de " + std::string(kLauncherName) +
++                         " (PPSA28997).");
++    }
++    // +x no binário gerado (o Win32 só copia o .exe; ELF precisa de modo exec).
++    fs::permissions(runtime, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
++                    fs::perm_options::add, ec);
++
++    linkIntoApp0(gameDir, "Media");   // launcher.cpp:990
++    linkIntoApp0(gameDir, "sce_sys"); // launcher.cpp:990
++
++    printMarker("SOS_HOST_RELINK_OK");
++    printMarker("SOS_HOST_GAME_START");
++    const int gameCode = runGame(gameDir, runtime);
++    if (gameCode < 0) {
++        failInternal("game-signaled", "O jogo terminou de forma anormal (sinal). Veja logs/game.err.");
++    }
++    SDL_Quit();
++    return gameCode;
++}
+-- 
+2.47.3
+

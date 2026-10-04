@@ -1,4 +1,12 @@
-# SoS-PS5-Android — CI (M1 / Task 1-a)
+# SoS-PS5-Android — CI (M1 / Task 1-a + M2 / Task 2-c)
+#
+# Job "host-linux" (M2-c): builds the Linux x86-64 HOST statically on
+# ubuntu-latest from the upstream SoS-PS5 source PINNED at 757692f…, with the
+# repo-local patch patches/0002-sos-linux-host.patch (task 2-b) applied
+# idempotently. Produces anyhost + relinker (both MUST be statically linked),
+# runs a NATIVE x86-64 smoke (empty game dir ⇒ SOS_HOST_MISSING_GAME_FILES
+# reason=no-eboot, exit 1) and uploads artifact "host-linux-x64" for the two
+# jobs below (artifact dependency, enforced with needs: host-linux).
 #
 # Job "box64-arm64": builds box64 NATIVELY on a real ARM64 runner
 # (ubuntu-24.04-arm) with the ARM dynarec, cross-builds the x86_64 PoC
@@ -7,9 +15,21 @@
 #   - Dynamic payload (guest glibc) is an M1 stretch goal: failure prints
 #     "DYNAMIC_TEST_FAILED reason=..." in the job summary but does NOT fail
 #     the workflow.
+#   M2-c extension (after the unchanged M1 regression tests): downloads
+#   artifact host-linux-x64 and runs anyhost/relinker under box64.
+#   anyhost is a HARD assert (exit 1 + SOS_HOST_MISSING_GAME_FILES +
+#   SOS_HOST_SDL2_OK + SOS_HOST_STARTED, no "Fatal signal"); relinker is a
+#   soft/informational smoke (real relink validation lands in M4+).
+#   NOTE: anyhost/relinker are STATIC x86-64 ELFs — unlike hello_dyn they do
+#   NOT need BOX64_LD_LIBRARY_PATH / cross glibc.
+#
 # Job "apk": builds the PoC debug APK (task 1-b): box64 (NDK/bionic) +
 # static x86-64 payload packaged as arm64-v8a jniLibs, executed on-device
 # via ProcessBuilder.
+#   M2-c extension: needs host-linux and installs the static anyhost as
+#   app/src/main/jniLibs/arm64-v8a/libanyhost64.so (same lib*.so rename
+#   pattern as libbox64.so / libpayload64.so; copy done in a workflow step so
+#   the ci-build-box64.sh contract is unchanged).
 #
 # box64 is NEVER committed to this repo (decision D5): it is fetched from
 # upstream (ptitSeb/box64) at build time, PINNED to a tested SHA, with the
@@ -32,10 +52,213 @@ permissions:
   contents: read
 
 jobs:
+  host-linux:
+    name: Linux x86-64 host (anyhost + relinker, static) — M2
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout this repo (patches/)
+        uses: actions/checkout@v4
+
+      - name: Checkout upstream SoS-PS5 (pinned 757692f) into ./sos-src
+        uses: actions/checkout@v4
+        with:
+          repository: OverkillLabs2/SoS-PS5
+          ref: 757692f6d7f41c557efa52db708b9d4d0c1b9a03
+          path: sos-src
+          fetch-depth: 1
+
+      # SDL2 submodule, checked out PINNED as a standalone action instead of
+      # `git submodule update --init --depth 1`: more robust (exact SHA
+      # enforced by actions/checkout, shallow, no dependency on the parent
+      # clone's gitlinks/.gitmodules handling). Path must match the upstream
+      # submodule entry (3rdparty/SDL2 → libsdl-org/SDL).
+      - name: Checkout SDL2 submodule (libsdl-org/SDL @ pinned 4b69833) into sos-src/3rdparty/SDL2
+        uses: actions/checkout@v4
+        with:
+          repository: libsdl-org/SDL
+          ref: 4b69833bc54abf3dd3288d4aa7afbba527775e5b
+          path: sos-src/3rdparty/SDL2
+          fetch-depth: 1
+
+      - name: Apply M2 host patch (patches/0002-sos-linux-host.patch, idempotent)
+        run: |
+          set -e
+          PATCH="$GITHUB_WORKSPACE/patches/0002-sos-linux-host.patch"
+          if [ ! -f "$PATCH" ]; then
+            echo "::error::patch file missing: $PATCH"
+            echo "**SOS_PATCH_FAILED** reason=patch file missing: $PATCH" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          # Idempotency: the patch is considered applied iff its main source
+          # file already carries the SOS_HOST_STARTED marker.
+          if [ -f sos-src/host/anyhost.cpp ] && grep -q "SOS_HOST_STARTED" sos-src/host/anyhost.cpp; then
+            echo "::warning::patch 0002 already applied (marker SOS_HOST_STARTED present in sos-src/host/anyhost.cpp) — skipping"
+          else
+            if ! git -C sos-src apply --check --whitespace=nowarn "$PATCH"; then
+              echo "::error::git apply --check FAILED for patches/0002-sos-linux-host.patch"
+              {
+                echo "**SOS_PATCH_FAILED** reason=git apply --check failed on upstream 757692f"
+                echo ""
+                echo '```'
+                git -C sos-src apply --check --whitespace=nowarn "$PATCH" 2>&1 || true
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            git -C sos-src apply --whitespace=nowarn "$PATCH"
+            if ! grep -q "SOS_HOST_STARTED" sos-src/host/anyhost.cpp; then
+              echo "::error::marker SOS_HOST_STARTED missing after apply"
+              echo "**SOS_PATCH_FAILED** reason=marker SOS_HOST_STARTED missing after apply" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            echo "patch applied cleanly on upstream 757692f"
+          fi
+
+      - name: Install tooling (cmake, file)
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake file
+
+      - name: Build host (anyhost + relinker, Release)
+        run: |
+          set -e
+          UP_SHA=$(git -C sos-src rev-parse HEAD)
+          SDL_SHA=$(git -C sos-src/3rdparty/SDL2 rev-parse HEAD)
+          {
+            echo "## host-linux (SoS-PS5-Android M2-c)"
+            echo ""
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| upstream SoS-PS5 | \`$UP_SHA\` (pinned 757692f) |"
+            echo "| SDL2 | \`$SDL_SHA\` (pinned 4b69833) |"
+            echo "| patch | \`patches/0002-sos-linux-host.patch\` |"
+            echo "| runner | \`${RUNNER_OS} ${RUNNER_ARCH}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          cmake -S sos-src/host -B build-host -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-host -j2 --target anyhost relinker
+
+      - name: Evidence — file(1) on both binaries (must be static x86-64)
+        run: |
+          set -e
+          file build-host/anyhost build-host/relinker
+          BAD=0
+          file build-host/anyhost  | grep -q  "x86-64"           || BAD=1
+          file build-host/relinker | grep -q  "x86-64"           || BAD=1
+          file build-host/anyhost  | grep -qi "statically linked" || BAD=1
+          file build-host/relinker | grep -qi "statically linked" || BAD=1
+          if [ "$BAD" -ne 0 ]; then
+            echo "::error::host binaries are NOT statically linked x86-64"
+            {
+              echo ""
+              echo "**HOST_NOT_STATIC** — expected 'statically linked' for BOTH anyhost and relinker"
+              echo ""
+              echo '```'
+              file build-host/anyhost build-host/relinker
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          {
+            echo ""
+            echo "**HOST_STATIC_OK** — both binaries are statically linked x86-64"
+            echo ""
+            echo '```'
+            file build-host/anyhost build-host/relinker
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Native x86-64 smoke — anyhost with empty game dir (mandatory — hard fail)
+        run: |
+          set +e
+          mkdir -p ci-empty
+          ./build-host/anyhost --game-dir ./ci-empty > native.log 2>&1
+          RC=$?
+          cat native.log
+          {
+            echo ""
+            echo "### Native x86-64 smoke (anyhost --game-dir ./ci-empty)"
+            echo ""
+            echo "- exit code: \`$RC\` (expected 1 = clean 'missing game files' screen)"
+            echo ""
+            echo '```'
+            cat native.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          REASON=""
+          if [ "$RC" -ne 1 ]; then REASON="exit=$RC (expected 1)"; fi
+          grep -q "SOS_HOST_MISSING_GAME_FILES" native.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
+          grep -q "reason=no-eboot"             native.log || REASON="$REASON missing-marker:reason=no-eboot"
+          grep -q "SOS_HOST_SDL2_OK"            native.log || REASON="$REASON missing-marker:SOS_HOST_SDL2_OK"
+          grep -q "SOS_HOST_STARTED"            native.log || REASON="$REASON missing-marker:SOS_HOST_STARTED"
+          if grep -q "Fatal signal" native.log; then REASON="$REASON fatal-signal-in-log"; fi
+          if [ -n "$REASON" ]; then
+            echo "::error::Native smoke FAILED: $REASON"
+            {
+              echo ""
+              echo "**HOST_NATIVE_SMOKE_FAILED reason=$REASON**"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "**HOST_NATIVE_SMOKE_PASSED** (exit=1 clean, all markers present)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Native relinker smoke — usage without args (soft/informational)
+        run: |
+          set +e
+          ./build-host/relinker > relinker.log 2>&1
+          RRC=$?
+          tail -n 30 relinker.log
+          {
+            echo ""
+            echo "### Native relinker smoke (no args — usage expected)"
+            echo ""
+            echo "- exit code: \`$RRC\` (expected != 0, clean usage; informational only)"
+            echo ""
+            echo '```'
+            tail -n 30 relinker.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RRC" -ne 0 ] && ! grep -q "Fatal signal" relinker.log; then
+            echo "**RELINKER_NATIVE_SMOKE_OK** (rc=$RRC — clean usage exit; real relink validation lands in M4+)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**RELINKER_NATIVE_SMOKE_FAILED** (rc=$RRC; informational only — does NOT fail this job; validated for real in M4+)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+
+      # Stage into a flat dir on purpose: upload-artifact@v4 uses the least
+      # common ancestor of the paths as artifact root, so uploading the staged
+      # directory yields a FLAT artifact {anyhost, relinker, native.log,
+      # relinker.log} and consumers can rely on host-x64/anyhost.
+      - name: Stage host-linux-x64 artifact contents
+        if: always()
+        run: |
+          set -e
+          mkdir -p artifact-host
+          cp -f build-host/anyhost  artifact-host/
+          cp -f build-host/relinker artifact-host/
+          cp -f native.log   artifact-host/ || true
+          cp -f relinker.log artifact-host/ || true
+          ls -la artifact-host
+
+      - name: Upload artifact host-linux-x64
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-linux-x64
+          if-no-files-found: error
+          path: artifact-host
+
   box64-arm64:
     name: box64 ARM64 native build + x86_64 payload execution
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
+    # needs host-linux ONLY as an artifact dependency (host-linux-x64:
+    # anyhost/relinker built on ubuntu-latest, run here under box64). If
+    # host-linux fails, this job is skipped — the host build gates the run.
+    needs: host-linux
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
@@ -228,6 +451,77 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
 
+      # ------------------------------------------------------------------
+      # M2-c: run the Linux x86-64 HOST binaries (job host-linux, artifact
+      # host-linux-x64) under box64 on this ARM64 runner. Static guests — no
+      # BOX64_LD_LIBRARY_PATH needed.
+      # ------------------------------------------------------------------
+      - name: Download host-linux-x64 artifact (built by job host-linux)
+        uses: actions/download-artifact@v4
+        with:
+          name: host-linux-x64
+          path: host-x64
+
+      - name: RUN anyhost (M2 host) under box64 (mandatory — hard fail)
+        run: |
+          set +e
+          # upload-artifact zips may drop the exec bit — guarantee it.
+          chmod +x host-x64/anyhost host-x64/relinker
+          mkdir -p ci-empty
+          BOX64_LOG=INFO ./box64-build/box64 host-x64/anyhost --game-dir ./ci-empty > host_box64.log 2>&1
+          RC=$?
+          cat host_box64.log
+          {
+            echo ""
+            echo "### anyhost (M2 host) under box64 — --game-dir ./ci-empty"
+            echo ""
+            echo "- BOX64_LOG=INFO, box64 exit code: \`$RC\` (expected 1 = clean 'missing game files' screen)"
+            echo ""
+            echo '```'
+            cat host_box64.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          REASON=""
+          if [ "$RC" -ne 1 ]; then REASON="exit=$RC (expected 1)"; fi
+          grep -q "SOS_HOST_MISSING_GAME_FILES" host_box64.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
+          grep -q "SOS_HOST_SDL2_OK"            host_box64.log || REASON="$REASON missing-marker:SOS_HOST_SDL2_OK"
+          grep -q "SOS_HOST_STARTED"            host_box64.log || REASON="$REASON missing-marker:SOS_HOST_STARTED"
+          if grep -q "Fatal signal" host_box64.log; then REASON="$REASON fatal-signal-in-log"; fi
+          if [ -n "$REASON" ]; then
+            echo "::error::HOST under box64 FAILED: $REASON"
+            echo "HOST_RESULT=FAIL" >> "$GITHUB_ENV"
+            {
+              echo ""
+              echo "**HOST_UNDER_BOX64_FAILED reason=$REASON**"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "HOST_RESULT=PASS" >> "$GITHUB_ENV"
+          echo "**HOST_UNDER_BOX64_PASSED** (rc=$RC — clean exit 1 with all markers under box64 on ARM64)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: RUN relinker under box64 (smoke — soft/informational)
+        run: |
+          set +e
+          BOX64_LOG=INFO ./box64-build/box64 host-x64/relinker > relinker_box64.log 2>&1
+          RRC=$?
+          tail -n 30 relinker_box64.log
+          {
+            echo ""
+            echo "### relinker under box64 (no args — usage expected)"
+            echo ""
+            echo "- exit code: \`$RRC\` (expected != 0, clean usage; informational only — real relink validation lands in M4+)"
+            echo ""
+            echo '```'
+            tail -n 30 relinker_box64.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RRC" -ne 0 ] && ! grep -q "Fatal signal" relinker_box64.log; then
+            echo "**RELINKER_BOX64_SMOKE_OK** (rc=$RRC — C++ runtime of relinker lives under box64)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**RELINKER_BOX64_SMOKE_FAILED** (rc=$RRC; informational only — does NOT fail the workflow; validated for real in M4+)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+
       - name: Final summary (SHA256s + verdict lines)
         if: always()
         run: |
@@ -246,7 +540,9 @@ jobs:
             echo "- dynarec: \`${DYNAREC:-unknown}\`"
             echo "- STATIC_TEST: \`${STATIC_RESULT:-FAIL}\` (mandatory)"
             echo "- DYNAMIC_TEST: \`${DYNAMIC_RESULT:-FAIL}\` (M1 stretch goal; failure does not fail this workflow)"
+            echo "- HOST_UNDER_BOX64: \`${HOST_RESULT:-NOT_RUN}\` (M2-c; anyhost --game-dir empty ⇒ exit 1 + markers, mandatory)"
             echo "- artifacts: \`box64-arm64-poc\` (box64 binary + payloads + run logs)"
+            echo "- artifacts (M2-c): \`host-linux-x64\` + host_box64.log/relinker_box64.log inside \`box64-arm64-poc\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload artifacts (box64 binary + payloads + logs)
@@ -261,16 +557,28 @@ jobs:
             payloads/x86_64/hello_dyn
             run_static.log
             run_dynamic.log
+            host_box64.log
+            relinker_box64.log
             cmake_dynarec_on.log
             cmake_dynarec_off.log
 
   apk:
-    name: APK PoC (box64 + payload x86-64)
+    name: APK PoC (box64 + payload x86-64 + anyhost M2)
+    # needs host-linux ONLY as an artifact dependency: the static anyhost built
+    # there is installed here as libanyhost64.so (jniLibs pattern). If
+    # host-linux fails, this job is skipped.
+    needs: host-linux
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download host-linux-x64 artifact (built by job host-linux)
+        uses: actions/download-artifact@v4
+        with:
+          name: host-linux-x64
+          path: host-x64
 
       - name: Setup JDK 17 (Temurin)
         uses: actions/setup-java@v4
@@ -299,12 +607,30 @@ jobs:
       - name: Build box64 (NDK/bionic) + payload x86-64 into jniLibs
         run: bash scripts/ci-build-box64.sh
 
+      - name: Install anyhost as libanyhost64.so (M2 host binary into jniLibs)
+        run: |
+          set -e
+          # upload-artifact zips may drop the exec bit — guarantee it before cp.
+          chmod +x host-x64/anyhost
+          cp -f host-x64/anyhost app/src/main/jniLibs/arm64-v8a/libanyhost64.so
+          chmod 755 app/src/main/jniLibs/arm64-v8a/libanyhost64.so
+          file app/src/main/jniLibs/arm64-v8a/libanyhost64.so
+          {
+            echo ""
+            echo "### anyhost → jniLibs (M2)"
+            echo ""
+            echo '```'
+            file app/src/main/jniLibs/arm64-v8a/libanyhost64.so
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Evidence — jniLibs contents
         run: |
           {
             echo "## jniLibs evidence (app/src/main/jniLibs/arm64-v8a)"
             echo '```'
             ls -la app/src/main/jniLibs/arm64-v8a
+            file app/src/main/jniLibs/arm64-v8a/libanyhost64.so
             for f in app/src/main/jniLibs/arm64-v8a/*; do file "$f"; done
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"

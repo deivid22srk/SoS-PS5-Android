@@ -1,9 +1,17 @@
 /*
- * SoS-PS5-Android — PoC M1 (task 1-b)
+ * SoS-PS5-Android — PoC box64 (M1 + M2)
  *
- * Proves the exec model: box64 (built with the Android NDK, packaged as
- * jniLibs/arm64-v8a/libbox64.so) is launched via ProcessBuilder with a STATIC
- * x86-64 ELF (packaged as jniLibs/arm64-v8a/libpayload64.so) as its argument.
+ * M1 (task 1-b): proves the exec model — box64 (built with the Android NDK,
+ * packaged as jniLibs/arm64-v8a/libbox64.so) is launched via ProcessBuilder
+ * with a STATIC x86-64 ELF (packaged as jniLibs/arm64-v8a/libpayload64.so)
+ * as its argument.
+ *
+ * M2 (task 2-d): the same exec model runs the AnyPS5 Linux host (anyhost,
+ * packaged as jniLibs/arm64-v8a/libanyhost64.so) with --game-dir pointing at
+ * an empty app-sandbox directory (<filesDir>/game). The EXPECTED outcome is
+ * the clean "missing game files" screen: SOS_HOST_MISSING_GAME_FILES +
+ * SOS_HOST_SDL2_OK + exit code 1 (no crash, no signal).
+ *
  * All output is mirrored to logcat (tag "SOSBox64") and shown on screen (PT-BR).
  *
  * Framework-only UI (android.app.Activity, programmatic views, no androidx).
@@ -28,13 +36,23 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends Activity {
 
     private static final String TAG = "SOSBox64";
+
+    // M1 payload marker (contract: must NOT be renamed — docs/MILESTONES.md).
     private static final String SUCCESS_MARKER = "SOS_POC_STATIC_OK";
+
+    // M2 anyhost markers (contract: docs/M2-LINUX-HOST.md section 2.2).
+    private static final String HOST_STARTED_MARKER = "SOS_HOST_STARTED";
+    private static final String HOST_SDL2_OK_MARKER = "SOS_HOST_SDL2_OK";
+    private static final String HOST_MISSING_MARKER = "SOS_HOST_MISSING_GAME_FILES";
+
     private static final int MAX_CAPTURED_LINES = 2000;
     private static final int TIMEOUT_SECONDS = 120;
 
@@ -42,6 +60,7 @@ public class MainActivity extends Activity {
     private TextView resultText;
     private TextView outputText;
     private Button runButton;
+    private Button hostButton;
     private CheckBox verboseLog;
     private ScrollView outputScroll;
 
@@ -58,7 +77,7 @@ public class MainActivity extends Activity {
         root.setPadding(dp(16), dp(16), dp(16), dp(16));
 
         TextView title = new TextView(this);
-        title.setText("SoS PS5 - PoC box64 (M1)");
+        title.setText("SoS PS5 - box64 (M1 + M2)");
         title.setTextSize(20f);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title);
@@ -79,11 +98,16 @@ public class MainActivity extends Activity {
         runButton.setOnClickListener(v -> startBox64Test());
         root.addView(runButton);
 
+        hostButton = new Button(this);
+        hostButton.setText("M2: Rodar host AnyPS5 (validação)");
+        hostButton.setOnClickListener(v -> startHostTest());
+        root.addView(hostButton);
+
         resultText = new TextView(this);
         resultText.setTextSize(15f);
         resultText.setTypeface(Typeface.DEFAULT_BOLD);
         resultText.setPadding(0, dp(8), 0, dp(4));
-        resultText.setText("Teste ainda não executado. Toque no botão acima.");
+        resultText.setText("Teste ainda não executado. Toque em um dos botões acima.");
         root.addView(resultText);
 
         outputScroll = new ScrollView(this);
@@ -105,7 +129,7 @@ public class MainActivity extends Activity {
         setContentView(root);
 
         // Mirror the device diagnosis to logcat as well.
-        Log.i(TAG, "=== PoC M1 iniciado ===");
+        Log.i(TAG, "=== App iniciado (M1 + M2) ===");
         for (String line : buildStatusText().split("\n")) {
             Log.i(TAG, line);
         }
@@ -119,8 +143,10 @@ public class MainActivity extends Activity {
 
         boolean hasBox64 = new File(nativeLibDir, "libbox64.so").exists();
         boolean hasPayload = new File(nativeLibDir, "libpayload64.so").exists();
+        boolean hasAnyhost = new File(nativeLibDir, "libanyhost64.so").exists();
         sb.append("libbox64.so: ").append(hasBox64 ? "presente" : "AUSENTE (APK sem o binário!)").append('\n');
         sb.append("libpayload64.so: ").append(hasPayload ? "presente" : "AUSENTE (APK sem o payload!)").append('\n');
+        sb.append("libanyhost64.so: ").append(hasAnyhost ? "presente" : "AUSENTE (APK sem o host M2!)").append('\n');
 
         if (Build.VERSION.SDK_INT < 33) {
             sb.append("Aviso: este app é destinado a Android 13+; continuando mesmo assim...");
@@ -128,33 +154,93 @@ public class MainActivity extends Activity {
         return sb.toString();
     }
 
+    /** M1 button handler — same texts and flow as task 1-b. */
     private void startBox64Test() {
-        runButton.setEnabled(false);
-        resultText.setText("Executando box64 + payload... aguarde.");
-        resultText.setTextColor(Color.GRAY);
-        outputText.setText("");
+        setBusyState("Executando box64 + payload... aguarde.");
 
         final String libPath = new File(nativeLibDir, "libbox64.so").getAbsolutePath();
         final String payloadPath = new File(nativeLibDir, "libpayload64.so").getAbsolutePath();
         final boolean debugLog = verboseLog.isChecked();
 
-        Thread t = new Thread(() -> runBox64(libPath, payloadPath, debugLog));
+        Thread t = new Thread(() -> runM1Test(libPath, payloadPath, debugLog));
         t.setName("box64-test");
         t.start();
     }
 
-    private void runBox64(String libPath, String payloadPath, boolean debugLog) {
-        final List<String> captured = new ArrayList<>();
-        final boolean[] markerFound = {false};
-        final boolean[] timedOut = {false};
-        int exitCode = Integer.MIN_VALUE;
-        String failure = null;
+    /** M2 button handler: runs the AnyPS5 host under box64 against an empty game dir. */
+    private void startHostTest() {
+        setBusyState("Executando host AnyPS5 (M2)... aguarde.");
+
+        final String libPath = new File(nativeLibDir, "libbox64.so").getAbsolutePath();
+        final String hostPath = new File(nativeLibDir, "libanyhost64.so").getAbsolutePath();
+        final boolean debugLog = verboseLog.isChecked();
+
+        Thread t = new Thread(() -> runM2Test(libPath, hostPath, debugLog));
+        t.setName("box64-m2-host");
+        t.start();
+    }
+
+    /** Shared pre-run UI state: gray "running" verdict, empty output, both buttons off. */
+    private void setBusyState(String runningText) {
+        runButton.setEnabled(false);
+        hostButton.setEnabled(false);
+        resultText.setText(runningText);
+        resultText.setTextColor(Color.GRAY);
+        outputText.setText("");
+    }
+
+    /**
+     * M1 flow (regression): box64 + static x86-64 payload.
+     * Markers, verdict and PT-BR texts are byte-identical to task 1-b.
+     */
+    private void runM1Test(String libPath, String payloadPath, boolean debugLog) {
+        ExecResult res = execUnderBox64(new String[]{libPath, payloadPath}, debugLog, SUCCESS_MARKER);
+        showM1Verdict(res);
+    }
+
+    /**
+     * M2 flow: box64 + anyhost --game-dir <filesDir>/game (dir created empty on
+     * purpose). Exit code 1 with SOS_HOST_MISSING_GAME_FILES is the EXPECTED
+     * result of this phase, not a failure.
+     */
+    private void runM2Test(String libPath, String hostPath, boolean debugLog) {
+        File gameDir = new File(getFilesDir(), "game");
+        gameDir.mkdirs(); // idempotent; empty dir = host must hit reason=no-eboot
+
+        ExecResult res = execUnderBox64(
+                new String[]{libPath, hostPath, "--game-dir", gameDir.getAbsolutePath()},
+                debugLog,
+                HOST_STARTED_MARKER, HOST_SDL2_OK_MARKER, HOST_MISSING_MARKER);
+        showM2Verdict(res);
+    }
+
+    /**
+     * Shared exec engine (refactored from the M1 flow): runs
+     * cmd[0] = <nativeLibraryDir>/libbox64.so followed by the guest and its
+     * args, with redirectErrorStream, HOME/TMPDIR pinned to the app sandbox,
+     * BOX64_LOG per the checkbox, a 120 s watchdog thread and a line-by-line
+     * logcat mirror (tag "SOSBox64"). Captured lines, detected markers, exit
+     * code and failures are returned in an ExecResult; the verdict itself is
+     * decided by each flow's caller (M1 vs M2 success criteria differ).
+     */
+    private ExecResult execUnderBox64(String[] cmd, boolean debugLog, String... markers) {
+        ExecResult res = new ExecResult();
+        for (String m : markers) {
+            res.markers.put(m, false);
+        }
 
         try {
-            Log.i(TAG, "Executando: " + libPath + " " + payloadPath
+            StringBuilder cmdLine = new StringBuilder();
+            for (String c : cmd) {
+                if (cmdLine.length() > 0) {
+                    cmdLine.append(' ');
+                }
+                cmdLine.append(c);
+            }
+            Log.i(TAG, "Executando: " + cmdLine
                     + " (BOX64_LOG=" + (debugLog ? "DEBUG" : "INFO") + ")");
 
-            ProcessBuilder pb = new ProcessBuilder(libPath, payloadPath);
+            ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             pb.environment().put("BOX64_LOG", debugLog ? "DEBUG" : "INFO");
             // box64 may look for ~/.box64rc; keep HOME/TMPDIR inside the app sandbox.
@@ -170,7 +256,7 @@ public class MainActivity extends Activity {
                 try {
                     if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                         process.destroyForcibly();
-                        timedOut[0] = true;
+                        res.timedOut = true;
                         Log.w(TAG, "Timeout de " + TIMEOUT_SECONDS + " s atingido — box64 encerrado à força.");
                     }
                 } catch (InterruptedException ignored) {
@@ -185,11 +271,13 @@ public class MainActivity extends Activity {
             String line;
             while ((line = reader.readLine()) != null) {
                 Log.i(TAG, line);
-                if (line.contains(SUCCESS_MARKER)) {
-                    markerFound[0] = true;
+                for (String m : markers) {
+                    if (line.contains(m)) {
+                        res.markers.put(m, true);
+                    }
                 }
-                if (captured.size() < MAX_CAPTURED_LINES) {
-                    captured.add(line);
+                if (res.captured.size() < MAX_CAPTURED_LINES) {
+                    res.captured.add(line);
                 }
             }
 
@@ -197,66 +285,137 @@ public class MainActivity extends Activity {
 
             // EOF reached (process exited, or was killed by the watchdog).
             if (process.waitFor(10, TimeUnit.SECONDS)) {
-                exitCode = process.exitValue();
+                res.exitCode = process.exitValue();
             } else {
                 process.destroyForcibly();
-                timedOut[0] = true;
+                res.timedOut = true;
             }
         } catch (IOException e) {
             // ProcessBuilder reports a missing/non-executable program as a plain
             // IOException (error=2 ENOENT / error=13 EACCES), NOT as
             // FileNotFoundException/SecurityException — name the file explicitly.
-            if (!new File(libPath).exists() || !new File(payloadPath).exists()) {
-                failure = explainMissingFile(libPath, payloadPath);
+            String missing = firstMissingFile(cmd);
+            if (missing != null) {
+                res.failure = explainMissingFile(missing);
             } else {
-                failure = "Erro de E/S ao executar o box64: " + e.getClass().getSimpleName()
+                res.failure = "Erro de E/S ao executar o box64: " + e.getClass().getSimpleName()
                         + (e.getMessage() != null ? (": " + e.getMessage()) : "");
             }
         } catch (SecurityException e) {
-            failure = "Permissão negada ao executar o binário: " + e.getMessage();
+            res.failure = "Permissão negada ao executar o binário: " + e.getMessage();
         } catch (Exception e) {
-            failure = "Erro de E/S ao executar o box64: " + e.getClass().getSimpleName()
+            res.failure = "Erro de E/S ao executar o box64: " + e.getClass().getSimpleName()
                     + (e.getMessage() != null ? (": " + e.getMessage()) : "");
         }
 
-        final int exit = exitCode;
-        final boolean timeout = timedOut[0];
-        final String failMsg = failure;
+        return res;
+    }
 
+    /** M1 verdict — texts kept byte-identical to task 1-b (regression flow). */
+    private void showM1Verdict(final ExecResult res) {
         runOnUiThread(() -> {
-            if (failMsg != null) {
-                resultText.setText("FALHA — " + failMsg);
+            if (res.failure != null) {
+                resultText.setText("FALHA — " + res.failure);
                 resultText.setTextColor(Color.rgb(0xB0, 0x00, 0x00));
-                Log.e(TAG, "FALHA: " + failMsg);
-            } else if (timeout) {
+                Log.e(TAG, "FALHA: " + res.failure);
+            } else if (res.timedOut) {
                 resultText.setText("FALHA — box64 não terminou em " + TIMEOUT_SECONDS + " s (processo encerrado à força).");
                 resultText.setTextColor(Color.rgb(0xB0, 0x00, 0x00));
                 Log.e(TAG, "FALHA: timeout");
-            } else if (markerFound[0]) {
+            } else if (res.markerSeen(SUCCESS_MARKER)) {
                 resultText.setText("SUCESSO: SOS_POC_STATIC_OK detectado"
-                        + (exit != 0 ? (" (código de saída: " + exit + ")") : ""));
+                        + (res.exitCode != 0 ? (" (código de saída: " + res.exitCode + ")") : ""));
                 resultText.setTextColor(Color.rgb(0x00, 0x70, 0x20));
-                Log.i(TAG, "SUCESSO: SOS_POC_STATIC_OK detectado (exit=" + exit + ")");
+                Log.i(TAG, "SUCESSO: SOS_POC_STATIC_OK detectado (exit=" + res.exitCode + ")");
             } else {
-                resultText.setText("FALHA — ver saída abaixo (código de saída: " + exit + ")."
-                        + explainSignalExit(exit));
+                resultText.setText("FALHA — ver saída abaixo (código de saída: " + res.exitCode + ")."
+                        + explainSignalExit(res.exitCode));
                 resultText.setTextColor(Color.rgb(0xB0, 0x00, 0x00));
-                Log.e(TAG, "FALHA: marcador ausente, exit=" + exit);
+                Log.e(TAG, "FALHA: marcador ausente, exit=" + res.exitCode);
             }
 
-            if (captured.isEmpty()) {
-                outputText.setText("(nenhuma saída capturada)");
-            } else {
-                StringBuilder out = new StringBuilder();
-                for (String l : captured) {
-                    out.append(l).append('\n');
-                }
-                outputText.setText(out.toString());
-            }
-            outputScroll.post(() -> outputScroll.fullScroll(View.FOCUS_DOWN));
+            showCapturedOutput(res.captured);
 
             runButton.setEnabled(true);
+            hostButton.setEnabled(true);
         });
+    }
+
+    /**
+     * M2 verdict: SUCESSO (green) if and only if the host output contains
+     * SOS_HOST_MISSING_GAME_FILES AND SOS_HOST_SDL2_OK AND exit code == 1
+     * (the clean "missing game files" screen — exit 1 is the EXPECTED result).
+     * Anything else is FALHA (red) with the reason decoded.
+     */
+    private void showM2Verdict(final ExecResult res) {
+        runOnUiThread(() -> {
+            if (res.failure != null) {
+                resultText.setText("FALHA (M2) — " + res.failure);
+                resultText.setTextColor(Color.rgb(0xB0, 0x00, 0x00));
+                Log.e(TAG, "FALHA (M2): " + res.failure);
+            } else if (res.timedOut) {
+                resultText.setText("FALHA (M2) — o host AnyPS5 não terminou em " + TIMEOUT_SECONDS
+                        + " s (processo encerrado à força).");
+                resultText.setTextColor(Color.rgb(0xB0, 0x00, 0x00));
+                Log.e(TAG, "FALHA (M2): timeout");
+            } else if (res.exitCode == 1
+                    && res.markerSeen(HOST_MISSING_MARKER)
+                    && res.markerSeen(HOST_SDL2_OK_MARKER)) {
+                // exit=1 é o RESULTADO ESPERADO do M2 (tela de arquivos ausentes, sem crash).
+                String sdl2Line = res.findLineContaining(HOST_SDL2_OK_MARKER);
+                String missingLine = res.findLineContaining(HOST_MISSING_MARKER);
+                String verdict = "SUCESSO (M2): o host AnyPS5 rodou sob box64 e atingiu a tela de "
+                        + "arquivos do jogo ausentes (exit=1 limpo, sem crash). "
+                        + "Instale os arquivos do jogo em um marco futuro.";
+                if (sdl2Line != null) {
+                    verdict += "\nEvidência SDL2: " + sdl2Line;
+                }
+                if (missingLine != null) {
+                    verdict += "\nMarker: " + missingLine;
+                }
+                resultText.setText(verdict);
+                resultText.setTextColor(Color.rgb(0x00, 0x70, 0x20));
+                Log.i(TAG, "SUCESSO (M2): missing game files atingido (exit=1"
+                        + (sdl2Line != null ? ", " + sdl2Line : "") + ")");
+            } else {
+                String hint;
+                if (res.exitCode == 1) {
+                    hint = " exit=1 foi retornado, mas os markers esperados ("
+                            + HOST_SDL2_OK_MARKER + " e/ou " + HOST_MISSING_MARKER
+                            + ") não apareceram na saída.";
+                } else if (res.exitCode == 2) {
+                    hint = " exit=2 = erro interno do host (procure SOS_HOST_INTERNAL_ERROR na saída abaixo).";
+                } else if (res.exitCode == 0) {
+                    hint = " exit=0 sem passar pela validação — inesperado nesta fase.";
+                } else {
+                    hint = "";
+                }
+                resultText.setText("FALHA (M2) — resultado inesperado do host (código de saída: "
+                        + res.exitCode + ")." + explainSignalExit(res.exitCode) + hint
+                        + " Saída completa abaixo.");
+                resultText.setTextColor(Color.rgb(0xB0, 0x00, 0x00));
+                Log.e(TAG, "FALHA (M2): resultado inesperado, exit=" + res.exitCode);
+            }
+
+            showCapturedOutput(res.captured);
+
+            runButton.setEnabled(true);
+            hostButton.setEnabled(true);
+        });
+    }
+
+    /** Dumps the captured process output into the on-screen log and scrolls down. */
+    private void showCapturedOutput(List<String> captured) {
+        if (captured.isEmpty()) {
+            outputText.setText("(nenhuma saída capturada)");
+        } else {
+            StringBuilder out = new StringBuilder();
+            for (String l : captured) {
+                out.append(l).append('\n');
+            }
+            outputText.setText(out.toString());
+        }
+        outputScroll.post(() -> outputScroll.fullScroll(View.FOCUS_DOWN));
     }
 
     /**
@@ -284,25 +443,62 @@ public class MainActivity extends Activity {
         return " O processo foi morto pelo sinal " + sig + " (" + name + ") — " + hint + ".";
     }
 
-    /** Returns a clear PT-BR message naming the missing file. */
-    private String explainMissingFile(String libPath, String payloadPath) {
-        if (!new File(libPath).exists()) {
-            String msg = "libbox64.so não encontrado em " + nativeLibDir
+    /** First absolute-path argument that does not exist on disk (or null). */
+    private String firstMissingFile(String[] cmd) {
+        for (String arg : cmd) {
+            if (arg.startsWith("/") && !new File(arg).exists()) {
+                return arg;
+            }
+        }
+        return null;
+    }
+
+    /** Returns a clear PT-BR message naming the missing packaged binary. */
+    private String explainMissingFile(String path) {
+        String name = new File(path).getName();
+        String msg;
+        if (name.equals("libbox64.so")) {
+            msg = "libbox64.so não encontrado em " + nativeLibDir
                     + ". O APK foi gerado sem o binário do box64 (ver scripts/ci-build-box64.sh no CI).";
-            Log.e(TAG, msg);
-            return msg;
-        }
-        if (!new File(payloadPath).exists()) {
-            String msg = "libpayload64.so não encontrado em " + nativeLibDir
+        } else if (name.equals("libpayload64.so")) {
+            msg = "libpayload64.so não encontrado em " + nativeLibDir
                     + ". O APK foi gerado sem o payload x86-64 (ver scripts/ci-build-box64.sh no CI).";
-            Log.e(TAG, msg);
-            return msg;
+        } else if (name.equals("libanyhost64.so")) {
+            msg = "libanyhost64.so não encontrado em " + nativeLibDir
+                    + ". O APK foi gerado sem o host AnyPS5 do M2 (ver o job apk do CI / docs/M2-LINUX-HOST.md).";
+        } else {
+            msg = "Arquivo não encontrado: " + path;
         }
-        return "Arquivo não encontrado: " + libPath;
+        Log.e(TAG, msg);
+        return msg;
     }
 
     private int dp(int v) {
         float scale = getResources().getDisplayMetrics().density;
         return Math.round(v * scale);
+    }
+
+    /** Outcome of one execUnderBox64 run, filled on the worker thread, read on the UI thread. */
+    private static final class ExecResult {
+        final List<String> captured = new ArrayList<>();
+        final Map<String, Boolean> markers = new LinkedHashMap<>();
+        int exitCode = Integer.MIN_VALUE;
+        boolean timedOut = false;
+        String failure = null;
+
+        boolean markerSeen(String name) {
+            Boolean seen = markers.get(name);
+            return seen != null && seen;
+        }
+
+        /** First captured line containing the given needle (or null). */
+        String findLineContaining(String needle) {
+            for (String l : captured) {
+                if (l.contains(needle)) {
+                    return l;
+                }
+            }
+            return null;
+        }
     }
 }

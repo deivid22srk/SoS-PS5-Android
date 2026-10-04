@@ -62,7 +62,8 @@ box64 elimina a ponte de ABI: as chamadas guest→libSce* são chamadas x86-64�
 | Vulkan dentro do processo x86-64 sob box64 (ponte p/ driver nativo) | M5 é o marco de maior risco técnico | aberto |
 | VA de 39 bits do kernel ARM64 vs endereços fixos do PS5 | M4; box64 tem mapeamento de VM próprio, mas precisa validação | aberto |
 | Performance: AAA PS5 traduzido em SoC mobile | M7 pode resultar em <30 FPS; expectativa honesta no relatório | aberto |
-| Camada Linux do AnyPS5 hoje parcial (relinker --linux não é o caminho testado) | M2 pode revelar lacunas além do launcher Win32 | aberto |
+| Camada Linux do AnyPS5 hoje parcial (relinker --linux não é o caminho testado) | M2 pode revelar lacunas além do launcher Win32 | MITIGADO PARCIALMENTE (M2-a): relinker tem caminho Linux nativo real (sem `--windows` → `LinuxElfPatcher`); a peça ausente é só o launcher — reimplementado como `anyhost` (ver docs/M2-LINUX-HOST.md) |
+| SDL2 estática mínima (dummy) sob box64/Android pode expor novas syscalls bloqueadas | M2 on-device pode falhar com SIGSYS | aberto — patch seccomp incremental se ocorrer (precedente patch 0001) |
 
 ## Regras do projeto
 
