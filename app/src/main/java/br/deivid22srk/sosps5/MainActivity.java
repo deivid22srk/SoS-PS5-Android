@@ -207,9 +207,14 @@ public class MainActivity extends Activity {
         File gameDir = new File(getFilesDir(), "game");
         gameDir.mkdirs(); // idempotent; empty dir = host must hit reason=no-eboot
 
+        // BOX64_DYNAREC_SAFEFLAGS=2: root-caused via the debug-m2 CI matrix
+        // (runs 37228217771 / 37228988961) — the static SDL2 init SIGSEGVs
+        // under the ARM dynarec with default (fast) EFLAGS handling;
+        // SAFEFLAGS=2 fixes it with dynarec ON. Same workaround as CI.
         ExecResult res = execUnderBox64(
                 new String[]{libPath, hostPath, "--game-dir", gameDir.getAbsolutePath()},
                 debugLog,
+                new String[]{"BOX64_DYNAREC_SAFEFLAGS=2"},
                 HOST_STARTED_MARKER, HOST_SDL2_OK_MARKER, HOST_MISSING_MARKER);
         showM2Verdict(res);
     }
@@ -223,7 +228,7 @@ public class MainActivity extends Activity {
      * code and failures are returned in an ExecResult; the verdict itself is
      * decided by each flow's caller (M1 vs M2 success criteria differ).
      */
-    private ExecResult execUnderBox64(String[] cmd, boolean debugLog, String... markers) {
+    private ExecResult execUnderBox64(String[] cmd, boolean debugLog, String[] extraEnv, String... markers) {
         ExecResult res = new ExecResult();
         for (String m : markers) {
             res.markers.put(m, false);
@@ -243,6 +248,15 @@ public class MainActivity extends Activity {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             pb.environment().put("BOX64_LOG", debugLog ? "DEBUG" : "INFO");
+            // Optional per-flow box64 tuning (e.g. BOX64_DYNAREC_SAFEFLAGS=2 for the M2 host).
+            if (extraEnv != null) {
+                for (String kv : extraEnv) {
+                    int eq = kv.indexOf('=');
+                    if (eq > 0) {
+                        pb.environment().put(kv.substring(0, eq), kv.substring(eq + 1));
+                    }
+                }
+            }
             // box64 may look for ~/.box64rc; keep HOME/TMPDIR inside the app sandbox.
             pb.environment().put("HOME", getFilesDir().getAbsolutePath());
             pb.environment().put("TMPDIR", getCacheDir().getAbsolutePath());

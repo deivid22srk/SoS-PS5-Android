@@ -522,3 +522,18 @@ correções documentais/higiene aplicadas e re-validadas).
   limpo do SHA pinado.
 - Box64/arm64 e apk skipados nesse run (gating `needs` intencional). Novo run
   após push do fix.
+
+### Fix CI #2 do M2 (2026-10-05) — SIGSEGV do host sob dynarec ARM (root cause)
+
+- Run 37227195824: host-linux **SUCCESS** e apk **SUCCESS**, mas o run do
+  `anyhost` sob box64 no runner ARM64 morreu com exit 139 (SIGSEGV) logo após
+  `SOS_HOST_STARTED`, com qualquer driver de vídeo.
+- Diagnóstico (workflow temporário `debug-m2.yml`, matriz de cenários — runs
+  37228217771/37228988961): intérprete do box64 passa 100% (exit 1 + markers);
+  dynarec crasha na init da SDL2 estática; `BOX64_DYNAREC_SAFEFLAGS=2` resolve
+  com dynarec **ON** (bug de EFLAGS parcial no dynarec ARM — detalhes em
+  `docs/KNOWN_BUGS.md` KB-001). Reprodução local prévia: box64 x86_64-host
+  (intérprete) roda o anyhost até o fim — guest code sem defeito.
+- Fix: `BOX64_DYNAREC_SAFEFLAGS=2` no step RUN anyhost do `build.yml` e no
+  `runM2Test` do app (overload `extraEnv` em `execUnderBox64`; fluxo M1
+  intocado). `docs/KNOWN_BUGS.md` criado (KB-001).

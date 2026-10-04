@@ -468,7 +468,12 @@ jobs:
           # upload-artifact zips may drop the exec bit — guarantee it.
           chmod +x host-x64/anyhost host-x64/relinker
           mkdir -p ci-empty
-          BOX64_LOG=INFO ./box64-build/box64 host-x64/anyhost --game-dir ./ci-empty > host_box64.log 2>&1
+          # BOX64_DYNAREC_SAFEFLAGS=2: root-caused via debug-m2 matrix (runs
+          # 37228217771 / 37228988961) — SDL2 static init SIGSEGVs under the
+          # ARM dynarec due to a partial-EFLAGS handling bug; SAFEFLAGS=2
+          # (conservative flags) fixes it with dynarec ON. Interpreter
+          # (BOX64_DYNAREC=0) also passes but is NOT the performance path.
+          BOX64_LOG=INFO BOX64_DYNAREC_SAFEFLAGS=2 ./box64-build/box64 host-x64/anyhost --game-dir ./ci-empty > host_box64.log 2>&1
           RC=$?
           cat host_box64.log
           {
