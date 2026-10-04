@@ -194,7 +194,7 @@ public class MainActivity extends Activity {
      * Markers, verdict and PT-BR texts are byte-identical to task 1-b.
      */
     private void runM1Test(String libPath, String payloadPath, boolean debugLog) {
-        ExecResult res = execUnderBox64(new String[]{libPath, payloadPath}, debugLog, SUCCESS_MARKER);
+        ExecResult res = execUnderBox64(new String[]{libPath, payloadPath}, debugLog, null, SUCCESS_MARKER);
         showM1Verdict(res);
     }
 
