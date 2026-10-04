@@ -25,7 +25,7 @@ inequívocas aplicadas e re-verificadas; achados arquiteturais apenas reportados
 | F7 | NIT | `build.yml` job `apk` (step Ensure SDK) | `yes \| sdkmanager ... \|\| true` engole falha do sdkmanager. Aceitável: o Gradle falha duro se `platforms;android-35` faltar; só dificulta o diagnóstico. | OPEN (aceito) |
 | F8 | NIT | `build.yml` job A (Build box64) | `./box64-build/box64 --version \|\| true` — padrão "nunca falha", mas é só evidência informativa (não gating). | OPEN (aceito) |
 | F9 | NIT | repo | Sem Gradle wrapper (`gradlew`) — CI pina Gradle 8.9 via setup-gradle; funciona, mas wrapper daria reprodutibilidade local idêntica ao CI. | OPEN |
-| F10 | INFO | `build.yml` | box64 via `ref: master` flutuante (decisão D5); SHA registrado no summary. Reprodutibilidade limitada por design. | OPEN (D5) |
+| F10 | INFO | `build.yml` | box64 via `ref: main` flutuante (decisão D5); SHA registrado no summary. Reprodutibilidade limitada por design. | OPEN (D5) |
 
 ### Verificação por item do checklist (evidência local, host x86_64)
 
@@ -131,7 +131,7 @@ ainda (fica para a task 1-b).
 
 ### Lógica do job `box64-arm64` (ubuntu-24.04-arm)
 
-1. Checkout deste repo + checkout de `ptitSeb/box64` @ `master` em `box64-src`
+1. Checkout deste repo + checkout de `ptitSeb/box64` @ `main` em `box64-src`
    (box64 NUNCA vai no repo — decisão D5).
 2. `apt-get install cmake ninja-build gcc-x86-64-linux-gnu libc6-dev-amd64-cross patchelf`.
 3. Configure do box64: `cmake -S box64-src -B box64-build -G Ninja -DARM_DYNAREC=ON

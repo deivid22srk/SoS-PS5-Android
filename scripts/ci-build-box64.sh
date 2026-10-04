@@ -85,9 +85,9 @@ fi
 # ---------------------------------------------------------------------------
 # 3) Clone upstream box64 (never committed to this repo — decision D5)
 # ---------------------------------------------------------------------------
-log "Cloning ptitSeb/box64 (master) into $BOX64_SRC"
+log "Cloning ptitSeb/box64 (main) into $BOX64_SRC"
 rm -rf "$BOX64_SRC"
-git clone --depth 1 --branch master https://github.com/ptitSeb/box64.git "$BOX64_SRC" \
+git clone --depth 1 --branch main https://github.com/ptitSeb/box64.git "$BOX64_SRC" \
     || die "box64 clone failed"
 BOX64_COMMIT="$(git -C "$BOX64_SRC" rev-parse --short HEAD || echo unknown)"
 echo "box64 commit: $BOX64_COMMIT"

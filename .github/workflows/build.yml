@@ -35,11 +35,11 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
-      - name: Checkout box64 upstream (ptitSeb/box64 @ master)
+      - name: Checkout box64 upstream (ptitSeb/box64 @ main)
         uses: actions/checkout@v4
         with:
           repository: ptitSeb/box64
-          ref: master
+          ref: main
           path: box64-src
 
       - name: Install toolchain (cmake, ninja, amd64 cross gcc + glibc)
