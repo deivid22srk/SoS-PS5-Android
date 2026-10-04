@@ -1062,6 +1062,13 @@ jobs:
           path: sos-src/3rdparty/SDL2
           fetch-depth: 1
 
+      # The vendored SDL android-project example ships its own gradle-wrapper.jar,
+      # which FAILS setup-gradle's wrapper validation ("unknown Gradle Wrapper
+      # JAR"). We never build that example (we use CMake) — remove it before
+      # Setup Gradle so validation keeps protecting OUR wrapper only.
+      - name: Remove vendored SDL android-project (gradle-wrapper.jar breaks setup-gradle validation)
+        run: rm -rf sos-src/3rdparty/SDL2/android-project
+
       - name: Download host-linux-x64 artifact (jniLibs payload — dynamic anyhost M3 + guest libs)
         uses: actions/download-artifact@v4
         with:
