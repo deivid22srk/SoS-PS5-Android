@@ -1,12 +1,27 @@
-# SoS-PS5-Android — CI (M1 / Task 1-a + M2 / Task 2-c)
+# SoS-PS5-Android — CI (M1 / Task 1-a + M2 / Task 2-c + M3 / Task 3-c)
 #
-# Job "host-linux" (M2-c): builds the Linux x86-64 HOST statically on
-# ubuntu-latest from the upstream SoS-PS5 source PINNED at 757692f…, with the
-# repo-local patch patches/0002-sos-linux-host.patch (task 2-b) applied
-# idempotently. Produces anyhost + relinker (both MUST be statically linked),
-# runs a NATIVE x86-64 smoke (empty game dir ⇒ SOS_HOST_MISSING_GAME_FILES
-# reason=no-eboot, exit 1) and uploads artifact "host-linux-x64" for the two
-# jobs below (artifact dependency, enforced with needs: host-linux).
+# Job "host-linux" (M2-c + M3): builds the Linux x86-64 HOST on ubuntu-latest
+# from the upstream SoS-PS5 source PINNED at 757692f…, applying the repo-local
+# patches idempotently: 0002-sos-linux-host.patch (task 2-b) and, NEW in M3,
+# 0003-sos-m3-libs.patch (task 3-b).
+#   M3 additions: the freetype submodule (pinned 42608f7 = VER-2-13-3) is
+#   initialized; the guest libs are built INTO stage-libs/ by calling
+#   scripts/m3-build-guest-libs.sh (FFmpeg n6.1.2 shared minimal + freetype
+#   shared, both patchelf'd to _sos SONAMEs — hard-asserted via readelf), and
+#   the host is configured with ANYHOST_M3_PROBES=ON / ANYHOST_SDL2_DYNAMIC=ON
+#   (system libSDL2-2.0.so.0 from apt libsdl2-dev + stage-libs guest libs).
+#   Result: anyhost is DYNAMIC (DT_NEEDED: libSDL2-2.0.so.0, libavcodec_sos.so,
+#   libavutil_sos.so, libfreetype_sos.so, libstdc++, libgcc_s, libc) while the
+#   relinker stays STATIC — both at the build root (hard-asserted via file(1),
+#   readelf and ldd with LD_LIBRARY_PATH=stage-libs). The native x86-64 smoke
+#   expects ALL M3 markers (SOS_HOST_STARTED, SOS_HOST_SDL2_OK,
+#   SOS_HOST_FREETYPE_OK version=, SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=,
+#   SOS_HOST_MISSING_GAME_FILES reason=no-eboot, exit 1) and ZERO loader
+#   errors. A soft "gating negative" step documents reason=not-elf on a fake
+#   eboot.bin (contract §4 — informational only, must not fail).
+#   Artifact "host-linux-x64" (FLAT) = anyhost, relinker, the 3 *_sos libs,
+#   native.log, relinker.log. The x86-64 libSDL2 is NOT shipped (the arm64
+#   job uses apt libsdl2, the APK uses the native ARM64 SDL2 built in-job).
 #
 # Job "box64-arm64": builds box64 NATIVELY on a real ARM64 runner
 # (ubuntu-24.04-arm) with the ARM dynarec, cross-builds the x86_64 PoC
@@ -15,21 +30,39 @@
 #   - Dynamic payload (guest glibc) is an M1 stretch goal: failure prints
 #     "DYNAMIC_TEST_FAILED reason=..." in the job summary but does NOT fail
 #     the workflow.
-#   M2-c extension (after the unchanged M1 regression tests): downloads
-#   artifact host-linux-x64 and runs anyhost/relinker under box64.
-#   anyhost is a HARD assert (exit 1 + SOS_HOST_MISSING_GAME_FILES +
-#   SOS_HOST_SDL2_OK + SOS_HOST_STARTED, no "Fatal signal"); relinker is a
-#   soft/informational smoke (real relink validation lands in M4+).
-#   NOTE: anyhost/relinker are STATIC x86-64 ELFs — unlike hello_dyn they do
-#   NOT need BOX64_LD_LIBRARY_PATH / cross glibc.
+#   M2-c relinker smoke is kept unchanged (relinker is STILL static in M3).
+#   M3 extension: downloads the artifact (dynamic anyhost + 3 guest libs) and
+#   runs the anyhost M3 flow under box64. box64's SDL2 wrapper (wrappedsdl2.c,
+#   always compiled in, no headers needed) binds the NATIVE arm64
+#   libSDL2-2.0.so.0 provided by apt libsdl2-2.0-0 via host dlopen — no guest
+#   SDL2 and no env rename tricks on glibc. The guest lib search path
+#   (BOX64_LD_LIBRARY_PATH) = artifact dir (_sos libs) + cross x86-64
+#   libstdc++/libgcc (box64 has no libstdc++ wrapper at this pin) + the
+#   M1-proven cross glibc dir (which also serves the guest ld.so via the
+#   /lib64 symlink created in the M1 step).
+#   KB-001 matrix (hard): leg A runs the M3 flow WITHOUT the legacy
+#   conservative dynarec override; on PASS the M2-era workaround is removed
+#   from the default path (kb001_removed=1). On crash, leg B reruns WITH it
+#   (mandatory PASS) plus a deterministic 200M-iteration int/FP benchmark
+#   (3 runs per mode, identical-checksum integrity gate, min/median + delta %
+#   into the job summary as KB001_PERF_DELTA).
 #
 # Job "apk": builds the PoC debug APK (task 1-b): box64 (NDK/bionic) +
 # static x86-64 payload packaged as arm64-v8a jniLibs, executed on-device
 # via ProcessBuilder.
-#   M2-c extension: needs host-linux and installs the static anyhost as
+#   M2-c extension: installs the host anyhost as
 #   app/src/main/jniLibs/arm64-v8a/libanyhost64.so (same lib*.so rename
 #   pattern as libbox64.so / libpayload64.so; copy done in a workflow step so
 #   the ci-build-box64.sh contract is unchanged).
+#   M3 extension: needs host-linux for the DYNAMIC anyhost + guest libs, and
+#   builds the native ARM64 SDL2 (dummy/offscreen, minimal) from the vendored
+#   submodule (libsdl-org/SDL @ pinned 4b69833) with the SAME NDK toolchain
+#   style as scripts/ci-build-box64.sh, staging it as libSDL2_sos_native.so
+#   (the device-side rename to libSDL2-2.0.so.0 happens IN JAVA, not here).
+#   Final jniLibs (arm64-v8a), all valid lib*.so names: libbox64.so,
+#   libpayload64.so, libanyhost64.so (dynamic x86-64), libavcodec_sos.so,
+#   libavutil_sos.so, libfreetype_sos.so (x86-64 guests), and
+#   libSDL2_sos_native.so (ARM64 native).
 #
 # box64 is NEVER committed to this repo (decision D5): it is fetched from
 # upstream (ptitSeb/box64) at build time, PINNED to a tested SHA, with the
@@ -53,7 +86,7 @@ permissions:
 
 jobs:
   host-linux:
-    name: Linux x86-64 host (anyhost + relinker, static) — M2
+    name: Linux x86-64 host (anyhost M3 dynamic + relinker static + guest libs) — M3
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -74,7 +107,10 @@ jobs:
       # `git submodule update --init --depth 1`: more robust (exact SHA
       # enforced by actions/checkout, shallow, no dependency on the parent
       # clone's gitlinks/.gitmodules handling). Path must match the upstream
-      # submodule entry (3rdparty/SDL2 → libsdl-org/SDL).
+      # submodule entry (3rdparty/SDL2 → libsdl-org/SDL). In M3 the vendored
+      # SDL2 is NOT linked into anyhost anymore (dynamic system SDL2), but it
+      # is still built from source by scripts/m3-build-guest-libs.sh as local
+      # verification of the submodule.
       - name: Checkout SDL2 submodule (libsdl-org/SDL @ pinned 4b69833) into sos-src/3rdparty/SDL2
         uses: actions/checkout@v4
         with:
@@ -117,70 +153,239 @@ jobs:
             echo "patch applied cleanly on upstream 757692f"
           fi
 
-      - name: Install tooling (cmake, file)
+      - name: Apply M3 host patch (patches/0003-sos-m3-libs.patch, idempotent)
+        run: |
+          set -e
+          PATCH="$GITHUB_WORKSPACE/patches/0003-sos-m3-libs.patch"
+          if [ ! -f "$PATCH" ]; then
+            echo "::error::patch file missing: $PATCH"
+            echo "**SOS_PATCH_FAILED** reason=patch file missing: $PATCH" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          # Idempotency: patch 0003 is considered applied iff its main target
+          # (host/anyhost.cpp) already carries the M3 freetype probe marker.
+          if [ -f sos-src/host/anyhost.cpp ] && grep -q "SOS_HOST_FREETYPE_OK" sos-src/host/anyhost.cpp; then
+            echo "::warning::patch 0003 already applied (marker SOS_HOST_FREETYPE_OK present in sos-src/host/anyhost.cpp) — skipping"
+          else
+            if ! git -C sos-src apply --check --whitespace=nowarn "$PATCH"; then
+              echo "::error::git apply --check FAILED for patches/0003-sos-m3-libs.patch (upstream 757692f + 0002)"
+              {
+                echo "**SOS_PATCH_FAILED** reason=git apply --check failed for 0003 on upstream 757692f + 0002"
+                echo ""
+                echo '```'
+                git -C sos-src apply --check --whitespace=nowarn "$PATCH" 2>&1 || true
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            git -C sos-src apply --whitespace=nowarn "$PATCH"
+            if ! grep -q "SOS_HOST_FREETYPE_OK" sos-src/host/anyhost.cpp; then
+              echo "::error::marker SOS_HOST_FREETYPE_OK missing after apply of 0003"
+              echo "**SOS_PATCH_FAILED** reason=marker SOS_HOST_FREETYPE_OK missing after apply of 0003" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            echo "patch 0003 applied cleanly on upstream 757692f (+0002)"
+          fi
+
+      - name: Init freetype submodule (upstream pin 42608f7 = VER-2-13-3)
+        run: |
+          set -e
+          git -C sos-src submodule update --init 3rdparty/freetype
+          FT_SHA=$(git -C sos-src/3rdparty/freetype rev-parse HEAD)
+          echo "FREETYPE_SHA=$FT_SHA" >> "$GITHUB_ENV"
+          echo "freetype submodule at: $FT_SHA"
+          case "$FT_SHA" in
+            42608f7*)
+              echo "freetype pin OK (42608f7… = VER-2-13-3)"
+              ;;
+            *)
+              echo "::error::freetype submodule SHA drifted: $FT_SHA (M3 contract pins 42608f7 = VER-2-13-3)"
+              exit 1
+              ;;
+          esac
+          test -f sos-src/3rdparty/freetype/include/ft2build.h \
+            || { echo "::error::ft2build.h not found in sos-src/3rdparty/freetype/include"; exit 1; }
+
+      - name: Install tooling (cmake, ninja, file, xz-utils, patchelf, libsdl2-dev)
         run: |
           set -e
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake file
+          # libsdl2-dev = M3 host link surface (x86-64): headers /usr/include/SDL2
+          # + runtime libSDL2-2.0.so.0 (package libsdl2-2.0-0, x86_64-linux-gnu).
+          # patchelf via apt (no pip needed on CI); xz-utils for the FFmpeg tarball.
+          sudo apt-get install -y --no-install-recommends cmake ninja-build file xz-utils patchelf libsdl2-dev
+          test -f /usr/include/SDL2/SDL.h || { echo "::error::/usr/include/SDL2/SDL.h missing after apt install"; exit 1; }
+          command -v patchelf >/dev/null || { echo "::error::patchelf not available after apt install"; exit 1; }
 
-      - name: Build host (anyhost + relinker, Release)
+      - name: Build guest libs into stage-libs (scripts/m3-build-guest-libs.sh)
+        run: |
+          set -euo pipefail
+          # Exact flag parity by construction: this is the SAME script 3-b used
+          # for the local STAGE (FFmpeg n6.1.2 shared minimal + make install,
+          # patchelf _sos SONAMEs, freetype shared from the submodule). CI gives
+          # it apt patchelf (already on PATH — the pip branch is skipped) and
+          # points SOS_PS5_ROOT at the patched checkout. The script also builds
+          # the x86-64 headless SDL2 from the submodule (link/verification only
+          # — CI links the host against apt's libSDL2-2.0.so.0 instead).
+          SOS_PS5_ROOT="$PWD/sos-src" bash scripts/m3-build-guest-libs.sh \
+            "$PWD/stage-libs" "$PWD/m3-work" 2>&1 | tee m3-guest-libs-ci.log
+          echo ""
+          echo "--- stage-libs ---"
+          ls -la stage-libs
+          file stage-libs/*
+          for f in libavcodec_sos.so libavutil_sos.so libfreetype_sos.so; do
+            test -f "stage-libs/$f" || { echo "::error::stage-libs/$f missing after guest-libs build"; exit 1; }
+          done
+
+      - name: Evidence — guest libs SONAME/NEEDED (hard assert)
         run: |
           set -e
+          file stage-libs/libavcodec_sos.so stage-libs/libavutil_sos.so stage-libs/libfreetype_sos.so
+          for f in libavcodec_sos.so libavutil_sos.so libfreetype_sos.so; do
+            echo "--- readelf -d stage-libs/$f ---"
+            readelf -d "stage-libs/$f"
+          done
+          {
+            echo ""
+            echo "### Guest libs (stage-libs) — SONAME/NEEDED evidence"
+            echo ""
+            echo '```'
+            file stage-libs/libavcodec_sos.so stage-libs/libavutil_sos.so stage-libs/libfreetype_sos.so
+            for f in libavcodec_sos.so libavutil_sos.so libfreetype_sos.so; do
+              readelf -d "stage-libs/$f" | grep -E 'SONAME|NEEDED'
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          BAD=""
+          readelf -d stage-libs/libavcodec_sos.so  | grep -q 'SONAME.*libavcodec_sos\.so'  || BAD="$BAD soname:libavcodec_sos.so"
+          readelf -d stage-libs/libavutil_sos.so   | grep -q 'SONAME.*libavutil_sos\.so'   || BAD="$BAD soname:libavutil_sos.so"
+          readelf -d stage-libs/libfreetype_sos.so | grep -q 'SONAME.*libfreetype_sos\.so' || BAD="$BAD soname:libfreetype_sos.so"
+          # HARD: the patched avcodec MUST need the patched avutil — and never the stock SONAME.
+          readelf -d stage-libs/libavcodec_sos.so  | grep -q 'NEEDED.*libavutil_sos\.so'   || BAD="$BAD needed:libavutil_sos.so-missing"
+          if readelf -d stage-libs/libavcodec_sos.so | grep -q 'NEEDED.*libavutil\.so\.58'; then
+            BAD="$BAD needed:STOCK-libavutil.so.58-still-present"
+          fi
+          file stage-libs/libavcodec_sos.so  | grep -q "x86-64" || BAD="$BAD arch:libavcodec_sos.so"
+          file stage-libs/libavutil_sos.so   | grep -q "x86-64" || BAD="$BAD arch:libavutil_sos.so"
+          file stage-libs/libfreetype_sos.so | grep -q "x86-64" || BAD="$BAD arch:libfreetype_sos.so"
+          if [ -n "$BAD" ]; then
+            echo "::error::Guest libs SONAME/NEEDED assertion FAILED:$BAD"
+            echo "**M3_GUEST_LIBS_ASSERT_FAILED**$BAD" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "**M3_GUEST_LIBS_OK** — SONAMEs patched to _sos; libavcodec_sos.so NEEDS libavutil_sos.so and NOT libavutil.so.58" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build host (anyhost M3 dynamic + relinker static, Release)
+        run: |
+          set -euo pipefail
           UP_SHA=$(git -C sos-src rev-parse HEAD)
           SDL_SHA=$(git -C sos-src/3rdparty/SDL2 rev-parse HEAD)
+          # Locate apt's x86-64 runtime libSDL2-2.0.so.0 (usually
+          # /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0) — verify, don't assume.
+          SDL2SO="$(dpkg -L libsdl2-2.0-0 2>/dev/null | grep '/libSDL2-2\.0\.so\.0$' | head -n1 || true)"
+          if [ -z "$SDL2SO" ]; then
+            SDL2SO="$(find /usr/lib -name 'libSDL2-2.0.so.0' -type f 2>/dev/null | head -n1 || true)"
+          fi
+          [ -n "$SDL2SO" ] || { echo "::error::libSDL2-2.0.so.0 not found (libsdl2-2.0-0 installed?)"; exit 1; }
+          SDL2LIBDIR="$(dirname "$SDL2SO")"
+          test -f "$SDL2LIBDIR/libSDL2-2.0.so.0" || { echo "::error::$SDL2LIBDIR/libSDL2-2.0.so.0 missing"; exit 1; }
+          test -f /usr/include/SDL2/SDL.h || { echo "::error::/usr/include/SDL2/SDL.h missing (libsdl2-dev)"; exit 1; }
+          echo "SDL2LIBDIR=$SDL2LIBDIR" >> "$GITHUB_ENV"
+          echo "System SDL2: $SDL2SO"
           {
-            echo "## host-linux (SoS-PS5-Android M2-c)"
+            echo "## host-linux (SoS-PS5-Android M3)"
             echo ""
             echo "| item | value |"
             echo "|---|---|"
             echo "| upstream SoS-PS5 | \`$UP_SHA\` (pinned 757692f) |"
-            echo "| SDL2 | \`$SDL_SHA\` (pinned 4b69833) |"
-            echo "| patch | \`patches/0002-sos-linux-host.patch\` |"
+            echo "| SDL2 submodule | \`$SDL_SHA\` (pinned 4b69833; built by guest-libs script, NOT linked) |"
+            echo "| freetype submodule | \`${FREETYPE_SHA:-unknown}\` (pinned 42608f7 = VER-2-13-3) |"
+            echo "| FFmpeg | n6.1.2 shared minimal → libavcodec_sos.so / libavutil_sos.so |"
+            echo "| patches | \`0002-sos-linux-host.patch\` + \`0003-sos-m3-libs.patch\` (idempotent) |"
+            echo "| host mode | ANYHOST_M3_PROBES=ON, ANYHOST_SDL2_DYNAMIC=ON, guest libs = stage-libs |"
+            echo "| system SDL2 | \`$SDL2SO\` (apt libsdl2-2.0-0) |"
             echo "| runner | \`${RUNNER_OS} ${RUNNER_ARCH}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-          cmake -S sos-src/host -B build-host -DCMAKE_BUILD_TYPE=Release
+          # M3 configure (option names per patches/0003-sos-m3-libs.patch):
+          #   probes ON   → links the 3 full-path *_sos libs (DT_NEEDED = _sos SONAMEs)
+          #   dynamic ON  → links apt's libSDL2-2.0.so.0, SKIPS the vendored SDL2
+          #                 sub-build; relinker flags stay OUTSIDE the if() so the
+          #                 relinker is static in BOTH modes (M3 contract).
+          cmake -S sos-src/host -B build-host -DCMAKE_BUILD_TYPE=Release \
+            -DANYHOST_M3_PROBES=ON \
+            -DANYHOST_SDL2_DYNAMIC=ON \
+            -DANYHOST_SDL2_LIB_DIR="$SDL2LIBDIR" \
+            -DANYHOST_SDL2_INCLUDE=/usr/include/SDL2 \
+            -DANYHOST_GUEST_LIBS_DIR="$PWD/stage-libs" \
+            -DANYHOST_FFMPEG_INCLUDE="$PWD/m3-work/ffmpeg-install/include" \
+            -DANYHOST_FREETYPE_INCLUDE="$PWD/sos-src/3rdparty/freetype/include"
           cmake --build build-host -j2 --target anyhost relinker
 
-      - name: Evidence — file(1) on both binaries (must be static x86-64)
+      - name: Evidence — anyhost dynamic / relinker static + ldd resolution (hard)
         run: |
           set -e
           file build-host/anyhost build-host/relinker
+          echo "--- readelf -d build-host/anyhost ---"
+          readelf -d build-host/anyhost
+          NEEDS="$(readelf -d build-host/anyhost)"
           BAD=0
-          file build-host/anyhost  | grep -q  "x86-64"           || BAD=1
-          file build-host/relinker | grep -q  "x86-64"           || BAD=1
-          file build-host/anyhost  | grep -qi "statically linked" || BAD=1
-          file build-host/relinker | grep -qi "statically linked" || BAD=1
+          file build-host/anyhost  | grep -q "x86-64"              || BAD=1
+          file build-host/anyhost  | grep -qi "dynamically linked" || BAD=1
+          file build-host/relinker | grep -q "x86-64"              || BAD=1
+          file build-host/relinker | grep -qi "statically linked"  || BAD=1
+          if file build-host/anyhost | grep -qi "statically linked"; then BAD=1; fi
+          # M3 NEEDED set on the dynamic anyhost (contract M3 §1)
+          for lib in libSDL2-2.0.so.0 libavcodec_sos.so libavutil_sos.so libfreetype_sos.so libstdc++ libgcc_s libc; do
+            echo "$NEEDS" | grep -q "NEEDED.*\[$lib\]" || BAD=1
+          done
+          if echo "$NEEDS" | grep -q 'NEEDED.*\[libavutil\.so\.58\]'; then BAD=1; fi
+          # ldd resolution with the guest libs on LD_LIBRARY_PATH: the _sos libs
+          # must resolve from stage-libs, libSDL2-2.0.so.0 from the system —
+          # ANY "not found" is a hard failure.
+          set +e
+          LDD_OUT="$(LD_LIBRARY_PATH="$PWD/stage-libs" ldd build-host/anyhost 2>&1)"
+          LDD_RC=$?
+          set -e
+          echo "--- ldd (LD_LIBRARY_PATH=stage-libs) ---"
+          echo "$LDD_OUT"
+          [ "$LDD_RC" -eq 0 ] || BAD=1
+          if echo "$LDD_OUT" | grep -qi "not found"; then BAD=1; fi
+          for lib in libSDL2-2.0.so.0 libavcodec_sos.so libavutil_sos.so libfreetype_sos.so; do
+            echo "$LDD_OUT" | grep -q "$lib" || BAD=1
+          done
           if [ "$BAD" -ne 0 ]; then
-            echo "::error::host binaries are NOT statically linked x86-64"
+            echo "::error::M3 host evidence FAILED (anyhost must be DYNAMIC x86-64 with the M3 NEEDED set; relinker must stay STATIC; ldd must resolve all 4 M3 libs)"
             {
               echo ""
-              echo "**HOST_NOT_STATIC** — expected 'statically linked' for BOTH anyhost and relinker"
+              echo "**HOST_M3_EVIDENCE_FAILED**"
               echo ""
               echo '```'
               file build-host/anyhost build-host/relinker
+              readelf -d build-host/anyhost
+              echo "$LDD_OUT"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           {
             echo ""
-            echo "**HOST_STATIC_OK** — both binaries are statically linked x86-64"
+            echo "**HOST_M3_EVIDENCE_OK** — anyhost = dynamic x86-64 with DT_NEEDED libSDL2-2.0.so.0 + 3× _sos; relinker = static x86-64; ldd resolves all M3 libs from stage-libs/system"
             echo ""
             echo '```'
-            file build-host/anyhost build-host/relinker
+            echo "$LDD_OUT"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Native x86-64 smoke — anyhost with empty game dir (mandatory — hard fail)
+      - name: Native x86-64 smoke — anyhost M3 with empty game dir (mandatory — hard fail)
         run: |
           set +e
           mkdir -p ci-empty
-          ./build-host/anyhost --game-dir ./ci-empty > native.log 2>&1
+          LD_LIBRARY_PATH="$PWD/stage-libs" ./build-host/anyhost --game-dir ./ci-empty > native.log 2>&1
           RC=$?
           cat native.log
           {
             echo ""
-            echo "### Native x86-64 smoke (anyhost --game-dir ./ci-empty)"
+            echo "### Native x86-64 smoke M3 (anyhost --game-dir ./ci-empty, LD_LIBRARY_PATH=stage-libs)"
             echo ""
             echo "- exit code: \`$RC\` (expected 1 = clean 'missing game files' screen)"
             echo ""
@@ -189,21 +394,56 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           REASON=""
-          if [ "$RC" -ne 1 ]; then REASON="exit=$RC (expected 1)"; fi
-          grep -q "SOS_HOST_MISSING_GAME_FILES" native.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
-          grep -q "reason=no-eboot"             native.log || REASON="$REASON missing-marker:reason=no-eboot"
-          grep -q "SOS_HOST_SDL2_OK"            native.log || REASON="$REASON missing-marker:SOS_HOST_SDL2_OK"
-          grep -q "SOS_HOST_STARTED"            native.log || REASON="$REASON missing-marker:SOS_HOST_STARTED"
-          if grep -q "Fatal signal" native.log; then REASON="$REASON fatal-signal-in-log"; fi
+          [ "$RC" -eq 1 ] || REASON="$REASON exit=$RC (expected 1)"
+          grep -q "SOS_HOST_STARTED"                        native.log || REASON="$REASON missing-marker:SOS_HOST_STARTED"
+          grep -q "SOS_HOST_SDL2_OK"                        native.log || REASON="$REASON missing-marker:SOS_HOST_SDL2_OK"
+          grep -q "SOS_HOST_FREETYPE_OK version="           native.log || REASON="$REASON missing-marker:SOS_HOST_FREETYPE_OK"
+          grep -q "SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=" native.log || REASON="$REASON missing-marker:SOS_HOST_FFMPEG_OK"
+          grep -q "SOS_HOST_MISSING_GAME_FILES"             native.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
+          grep -q "reason=no-eboot"                         native.log || REASON="$REASON missing-marker:reason=no-eboot"
+          grep -q "SOS_HOST_M3_SKIPPED"                     native.log && REASON="$REASON unexpected-marker:SOS_HOST_M3_SKIPPED"
+          grep -q "SOS_HOST_M3_FAIL"                        native.log && REASON="$REASON unexpected-marker:SOS_HOST_M3_FAIL"
+          grep -qi "symbol not found"                       native.log && REASON="$REASON symbol-not-found"
+          grep -q  "error while loading shared libraries"   native.log && REASON="$REASON loader-error"
+          grep -q  "Fatal signal"                           native.log && REASON="$REASON fatal-signal-in-log"
           if [ -n "$REASON" ]; then
-            echo "::error::Native smoke FAILED: $REASON"
+            echo "::error::Native M3 smoke FAILED:$REASON"
             {
               echo ""
               echo "**HOST_NATIVE_SMOKE_FAILED reason=$REASON**"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          echo "**HOST_NATIVE_SMOKE_PASSED** (exit=1 clean, all markers present)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**HOST_NATIVE_SMOKE_PASSED** (exit=1 clean, all M3 markers present, no loader errors)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gating negative probe — fake eboot.bin → reason=not-elf (documental only)
+        run: |
+          set +e
+          # Contract §4: any reason != no-eboot is a HARD failure on the real
+          # path. This probe exists ONLY to document that the gate fires: a
+          # 64-byte all-zero eboot.bin must yield reason=not-elf (exit 1).
+          mkdir -p ci-empty-noteboot
+          head -c 64 /dev/zero > ci-empty-noteboot/eboot.bin
+          LD_LIBRARY_PATH="$PWD/stage-libs" ./build-host/anyhost --game-dir ./ci-empty-noteboot > native-noteboot.log 2>&1
+          RC=$?
+          tail -n 20 native-noteboot.log
+          {
+            echo ""
+            echo "### Gating negative probe (fake 64-byte eboot.bin — documental only)"
+            echo ""
+            echo "- exit code: \`$RC\` — expected reason=not-elf (a HARD reason on the real path; observed here as information only)"
+            echo ""
+            echo '```'
+            tail -n 20 native-noteboot.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if grep -q "reason=not-elf" native-noteboot.log; then
+            echo "**HOST_GATE_NOTELF_OBSERVED** (reason=not-elf observed with exit=$RC — informational, does NOT fail the job)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::expected reason=not-elf NOT observed on the fake-eboot probe (documental step; NOT failing)"
+            echo "**HOST_GATE_NOTELF_NOT_OBSERVED** (informational only — investigate outside the release path)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
 
       - name: Native relinker smoke — usage without args (soft/informational)
         run: |
@@ -230,8 +470,11 @@ jobs:
 
       # Stage into a flat dir on purpose: upload-artifact@v4 uses the least
       # common ancestor of the paths as artifact root, so uploading the staged
-      # directory yields a FLAT artifact {anyhost, relinker, native.log,
-      # relinker.log} and consumers can rely on host-x64/anyhost.
+      # directory yields a FLAT artifact {anyhost, relinker, libavcodec_sos.so,
+      # libavutil_sos.so, libfreetype_sos.so, native.log, relinker.log} and
+      # consumers can rely on host-x64/<name>. The x86-64 libSDL2 is NOT
+      # shipped: the arm64 job installs apt libsdl2-2.0-0 and the APK job
+      # builds the native ARM64 SDL2 from the vendored submodule.
       - name: Stage host-linux-x64 artifact contents
         if: always()
         run: |
@@ -239,6 +482,9 @@ jobs:
           mkdir -p artifact-host
           cp -f build-host/anyhost  artifact-host/
           cp -f build-host/relinker artifact-host/
+          cp -f stage-libs/libavcodec_sos.so  artifact-host/
+          cp -f stage-libs/libavutil_sos.so   artifact-host/
+          cp -f stage-libs/libfreetype_sos.so artifact-host/
           cp -f native.log   artifact-host/ || true
           cp -f relinker.log artifact-host/ || true
           ls -la artifact-host
@@ -252,12 +498,13 @@ jobs:
           path: artifact-host
 
   box64-arm64:
-    name: box64 ARM64 native build + x86_64 payload execution
+    name: box64 ARM64 native build + x86_64 payloads + anyhost M3 (KB-001 matrix)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
-    # needs host-linux ONLY as an artifact dependency (host-linux-x64:
-    # anyhost/relinker built on ubuntu-latest, run here under box64). If
-    # host-linux fails, this job is skipped — the host build gates the run.
+    # needs host-linux ONLY as an artifact dependency (host-linux-x64: dynamic
+    # anyhost + the 3 _sos guest libs, built on ubuntu-latest, run here under
+    # box64). If host-linux fails, this job is skipped — the host build gates
+    # the run.
     needs: host-linux
     steps:
       - name: Checkout this repo
@@ -283,23 +530,34 @@ jobs:
           fi
           echo "BOX64_PATCHED=1" >> "$GITHUB_ENV"
 
-      - name: Install toolchain (cmake, ninja, amd64 cross gcc + glibc)
+      - name: Install toolchain (cmake, ninja, amd64 cross gcc + glibc + libstdc++, libsdl2-2.0-0)
         run: |
           set -e
           BOX64_SHA=$(git -C box64-src rev-parse HEAD)
           echo "BOX64_SHA=$BOX64_SHA" >> "$GITHUB_ENV"
           echo "BOX64_SHA=$BOX64_SHA"
           {
-            echo "## box64 ARM64 validation (SoS-PS5-Android M1 / Task 1-a)"
+            echo "## box64 ARM64 validation (SoS-PS5-Android M1 / M3)"
             echo ""
             echo "| item | value |"
             echo "|---|---|"
             echo "| box64 git SHA | \`$BOX64_SHA\` (pinned) |"
             echo "| android seccomp patch | applied (no-op on Linux) |"
+            echo "| native SDL2 | apt libsdl2-2.0-0 (arm64) — bound by box64's wrappedsdl2 via dlopen |"
             echo "| runner | \`${RUNNER_OS} ${RUNNER_ARCH}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build gcc-x86-64-linux-gnu libc6-dev-amd64-cross patchelf
+          # libstdc++6-amd64-cross: the M3 anyhost is a DYNAMIC C++ guest and
+          # box64 @ abfb8c3 wraps libc/libm/pthread/dl but NOT libstdc++/libgcc_s
+          # — the real x86-64 runtime libs must be reachable via BOX64_LD_LIBRARY_PATH.
+          # libsdl2-2.0-0: the NATIVE arm64 SDL2 that box64's wrappedsdl2 dlopens.
+          sudo apt-get install -y cmake ninja-build gcc-x86-64-linux-gnu libc6-dev-amd64-cross libstdc++6-amd64-cross libsdl2-2.0-0 patchelf
+          # HARD: the native SDL2 must be dlopen-able (box64's SDL2 wrapper binds
+          # libSDL2-2.0.so.0 on the host side at runtime).
+          ldconfig -p | grep -i "libSDL2-2.0.so.0" || true
+          python3 -c "import ctypes; ctypes.CDLL('libSDL2-2.0.so.0'); print('dlopen libSDL2-2.0.so.0 OK')" \
+            || { echo "::error::native libSDL2-2.0.so.0 is NOT dlopen-able on the arm64 runner (libsdl2-2.0-0)"; exit 1; }
+          echo "**NATIVE_SDL2_DLOPEN_OK** (arm64 runner: libSDL2-2.0.so.0 dlopen-able — box64 wrappedsdl2 will bind it)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configure box64 (ARM_DYNAREC=ON first, explicit OFF fallback)
         run: |
@@ -383,6 +641,8 @@ jobs:
             || echo "::warning::patchelf --set-interpreter failed — relying on /lib64 symlink fallback"
           # Fallback: make the default PT_INTERP path (/lib64/ld-linux-x86-64.so.2)
           # resolve to the cross loader. Harmless if patchelf already succeeded.
+          # NOTE (M3): the dynamic anyhost ALSO needs this symlink — box64 reads
+          # the guest ld.so from the PT_INTERP path on disk.
           sudo mkdir -p /lib64
           sudo ln -sf "$LDSO" /lib64/ld-linux-x86-64.so.2
           ls -l /lib64/ld-linux-x86-64.so.2
@@ -452,9 +712,9 @@ jobs:
           exit 0
 
       # ------------------------------------------------------------------
-      # M2-c: run the Linux x86-64 HOST binaries (job host-linux, artifact
-      # host-linux-x64) under box64 on this ARM64 runner. Static guests — no
-      # BOX64_LD_LIBRARY_PATH needed.
+      # M3: download the artifact — FLAT, now 7 files: anyhost (DYNAMIC M3
+      # build), relinker (static), libavcodec_sos.so / libavutil_sos.so /
+      # libfreetype_sos.so, native.log, relinker.log.
       # ------------------------------------------------------------------
       - name: Download host-linux-x64 artifact (built by job host-linux)
         uses: actions/download-artifact@v4
@@ -462,47 +722,250 @@ jobs:
           name: host-linux-x64
           path: host-x64
 
-      - name: RUN anyhost (M2 host) under box64 (mandatory — hard fail)
+      # ------------------------------------------------------------------
+      # KB-001 matrix leg A (M3): run the DYNAMIC anyhost under box64 with
+      # NO dynarec safety override. The M2-era workaround (a conservative
+      # box64 dynarec mode, root-caused in runs 37228217771/37228988961)
+      # existed for the guest SDL2 STATIC init — that code is GONE in M3
+      # (box64's native SDL2 wrapper instead), so the workaround must be
+      # re-evaluated: PASS here ⇒ removed from the default path.
+      # ------------------------------------------------------------------
+      - name: KB-001 matrix leg A — RUN anyhost M3 under box64 (no dynarec override)
         run: |
           set +e
           # upload-artifact zips may drop the exec bit — guarantee it.
           chmod +x host-x64/anyhost host-x64/relinker
+          chmod +x host-x64/libavcodec_sos.so host-x64/libavutil_sos.so host-x64/libfreetype_sos.so || true
+          ls -la host-x64
           mkdir -p ci-empty
-          # BOX64_DYNAREC_SAFEFLAGS=2: root-caused via debug-m2 matrix (runs
-          # 37228217771 / 37228988961) — SDL2 static init SIGSEGVs under the
-          # ARM dynarec due to a partial-EFLAGS handling bug; SAFEFLAGS=2
-          # (conservative flags) fixes it with dynarec ON. Interpreter
-          # (BOX64_DYNAREC=0) also passes but is NOT the performance path.
-          BOX64_LOG=INFO BOX64_DYNAREC_SAFEFLAGS=2 ./box64-build/box64 host-x64/anyhost --game-dir ./ci-empty > host_box64.log 2>&1
+          # Guest (x86-64) library search path for box64, in order:
+          #  1) the 3 *_sos guest libs (downloaded artifact dir),
+          #  2) cross x86-64 libstdc++/libgcc_s (box64 does NOT wrap libstdc++
+          #     at this pin; anyhost is a DYNAMIC C++ guest),
+          #  3) cross x86-64 glibc (M1-proven path; also serves the guest
+          #     ld-linux-x86-64.so.2 via the /lib64 symlink from the M1 step).
+          # libSDL2-2.0.so.0 is deliberately ABSENT here: box64's SDL2 wrapper
+          # binds the NATIVE arm64 SDL2 (apt libsdl2-2.0-0) via host dlopen.
+          STDCPP_DIR="$(dpkg -L libstdc++6-amd64-cross 2>/dev/null | grep '/libstdc++\.so\.6$' | head -n1 || true)"
+          if [ -z "$STDCPP_DIR" ]; then
+            echo "::error::cross guest libstdc++.so.6 not found (package libstdc++6-amd64-cross) — the dynamic C++ anyhost cannot resolve libstdc++ under box64"
+            exit 1
+          fi
+          GUEST_LIBPATH="$PWD/host-x64:$(dirname "$STDCPP_DIR"):$BOX64_LIBPATH"
+          echo "GUEST_LIBPATH=$GUEST_LIBPATH" >> "$GITHUB_ENV"
+          echo "Guest BOX64_LD_LIBRARY_PATH: $GUEST_LIBPATH"
+          BOX64_LOG=INFO BOX64_LD_LIBRARY_PATH="$GUEST_LIBPATH" \
+            ./box64-build/box64 host-x64/anyhost --game-dir ./ci-empty > host_box64_m3.log 2>&1
           RC=$?
-          cat host_box64.log
+          cat host_box64_m3.log
           {
             echo ""
-            echo "### anyhost (M2 host) under box64 — --game-dir ./ci-empty"
+            echo "### KB-001 matrix leg A — anyhost M3 under box64, NO dynarec safety override"
             echo ""
+            echo "- BOX64_LD_LIBRARY_PATH: \`$GUEST_LIBPATH\`"
             echo "- BOX64_LOG=INFO, box64 exit code: \`$RC\` (expected 1 = clean 'missing game files' screen)"
             echo ""
             echo '```'
-            cat host_box64.log
+            cat host_box64_m3.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           REASON=""
-          if [ "$RC" -ne 1 ]; then REASON="exit=$RC (expected 1)"; fi
-          grep -q "SOS_HOST_MISSING_GAME_FILES" host_box64.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
-          grep -q "SOS_HOST_SDL2_OK"            host_box64.log || REASON="$REASON missing-marker:SOS_HOST_SDL2_OK"
-          grep -q "SOS_HOST_STARTED"            host_box64.log || REASON="$REASON missing-marker:SOS_HOST_STARTED"
-          if grep -q "Fatal signal" host_box64.log; then REASON="$REASON fatal-signal-in-log"; fi
-          if [ -n "$REASON" ]; then
-            echo "::error::HOST under box64 FAILED: $REASON"
-            echo "HOST_RESULT=FAIL" >> "$GITHUB_ENV"
+          [ "$RC" -eq 1 ] || REASON="$REASON exit=$RC (expected 1)"
+          if [ "$RC" -ge 128 ]; then REASON="$REASON signal-exit(rc=$RC)"; fi
+          grep -q "SOS_HOST_STARTED"                        host_box64_m3.log || REASON="$REASON missing-marker:SOS_HOST_STARTED"
+          grep -q "SOS_HOST_SDL2_OK"                        host_box64_m3.log || REASON="$REASON missing-marker:SOS_HOST_SDL2_OK"
+          grep -q "SOS_HOST_FREETYPE_OK version="           host_box64_m3.log || REASON="$REASON missing-marker:SOS_HOST_FREETYPE_OK"
+          grep -q "SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=" host_box64_m3.log || REASON="$REASON missing-marker:SOS_HOST_FFMPEG_OK"
+          grep -q "SOS_HOST_MISSING_GAME_FILES"             host_box64_m3.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
+          grep -q "reason=no-eboot"                         host_box64_m3.log || REASON="$REASON missing-marker:reason=no-eboot"
+          grep -qi "symbol not found"                       host_box64_m3.log && REASON="$REASON symbol-not-found"
+          grep -q  "error while loading shared libraries"   host_box64_m3.log && REASON="$REASON loader-error"
+          grep -q  "Fatal signal"                           host_box64_m3.log && REASON="$REASON fatal-signal-in-log"
+          if [ -z "$REASON" ]; then
+            echo "KB001_REEVAL_NO_SAFEFLAGS_PASS"
+            echo "HOST_RESULT=PASS" >> "$GITHUB_ENV"
+            echo "KB001_OUTCOME=PASS_NO_SAFEFLAGS" >> "$GITHUB_ENV"
+            echo "KB001_BENCH_REQUIRED=0" >> "$GITHUB_ENV"
+            echo "KB001_SAFEFLAGS_REMOVED=1" >> "$GITHUB_ENV"
+            echo "kb001_removed=1" >> "$GITHUB_ENV"
             {
               echo ""
-              echo "**HOST_UNDER_BOX64_FAILED reason=$REASON**"
+              echo "**KB001_REEVAL_NO_SAFEFLAGS_PASS** — M3 flow PASSES under box64 WITHOUT the legacy dynarec override; workaround removed from the default path (kb001_removed=1)"
+              echo ""
+              echo "M3 markers (leg A log):"
+              echo '```'
+              grep -E "SOS_HOST_(STARTED|SDL2_OK|FREETYPE_OK|FFMPEG_OK|MISSING_GAME_FILES)" host_box64_m3.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          NOSF_REASON="$(printf '%s' "$REASON" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]\+/_/g')"
+          echo "KB001_REEVAL_NO_SAFEFLAGS_FAIL reason=$NOSF_REASON"
+          echo "HOST_RESULT=FAIL" >> "$GITHUB_ENV"
+          echo "KB001_OUTCOME=FAIL_NO_SAFEFLAGS" >> "$GITHUB_ENV"
+          echo "KB001_BENCH_REQUIRED=1" >> "$GITHUB_ENV"
+          echo "KB001_NOSF_REASON=$NOSF_REASON" >> "$GITHUB_ENV"
+          {
+            echo ""
+            echo "**KB001_REEVAL_NO_SAFEFLAGS_FAIL reason=$NOSF_REASON** — falling back: leg B reruns WITH the conservative dynarec mode (mandatory PASS) + performance delta benchmark below"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: KB-001 matrix leg B — rerun with BOX64_DYNAREC_SAFEFLAGS=2 (mandatory PASS)
+        if: env.KB001_BENCH_REQUIRED == '1'
+        run: |
+          set +e
+          # KB-001 fallback: the conservative dynarec mode that fixed the M2
+          # static-SDL2 SIGSEGV (runs 37228217771 / 37228988961). If even this
+          # fails, the M3 flow itself is broken under box64 — hard fail.
+          BOX64_LOG=INFO BOX64_LD_LIBRARY_PATH="$GUEST_LIBPATH" BOX64_DYNAREC_SAFEFLAGS=2 \
+            ./box64-build/box64 host-x64/anyhost --game-dir ./ci-empty > host_box64_m3_sf.log 2>&1
+          RC=$?
+          cat host_box64_m3_sf.log
+          {
+            echo ""
+            echo "### KB-001 matrix leg B — anyhost M3 under box64 WITH the legacy dynarec override"
+            echo ""
+            echo "- BOX64_LOG=INFO, box64 exit code: \`$RC\` (expected 1)"
+            echo ""
+            echo '```'
+            cat host_box64_m3_sf.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          REASON=""
+          [ "$RC" -eq 1 ] || REASON="$REASON exit=$RC (expected 1)"
+          if [ "$RC" -ge 128 ]; then REASON="$REASON signal-exit(rc=$RC)"; fi
+          grep -q "SOS_HOST_STARTED"                        host_box64_m3_sf.log || REASON="$REASON missing-marker:SOS_HOST_STARTED"
+          grep -q "SOS_HOST_SDL2_OK"                        host_box64_m3_sf.log || REASON="$REASON missing-marker:SOS_HOST_SDL2_OK"
+          grep -q "SOS_HOST_FREETYPE_OK version="           host_box64_m3_sf.log || REASON="$REASON missing-marker:SOS_HOST_FREETYPE_OK"
+          grep -q "SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=" host_box64_m3_sf.log || REASON="$REASON missing-marker:SOS_HOST_FFMPEG_OK"
+          grep -q "SOS_HOST_MISSING_GAME_FILES"             host_box64_m3_sf.log || REASON="$REASON missing-marker:SOS_HOST_MISSING_GAME_FILES"
+          grep -q "reason=no-eboot"                         host_box64_m3_sf.log || REASON="$REASON missing-marker:reason=no-eboot"
+          grep -qi "symbol not found"                       host_box64_m3_sf.log && REASON="$REASON symbol-not-found"
+          grep -q  "error while loading shared libraries"   host_box64_m3_sf.log && REASON="$REASON loader-error"
+          grep -q  "Fatal signal"                           host_box64_m3_sf.log && REASON="$REASON fatal-signal-in-log"
+          if [ -n "$REASON" ]; then
+            echo "::error::KB-001 leg B FAILED even WITH the conservative dynarec mode:$REASON — the M3 flow itself is broken under box64 (not only the dynarec optimization)"
+            {
+              echo ""
+              echo "**KB001_SAFEFLAGS_FALLBACK_FAILED reason=$REASON**"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+          echo "KB001_SAFEFLAGS_FALLBACK_PASS"
           echo "HOST_RESULT=PASS" >> "$GITHUB_ENV"
-          echo "**HOST_UNDER_BOX64_PASSED** (rc=$RC — clean exit 1 with all markers under box64 on ARM64)" >> "$GITHUB_STEP_SUMMARY"
+          echo "KB001_OUTCOME=PASS_WITH_SAFEFLAGS" >> "$GITHUB_ENV"
+          {
+            echo ""
+            echo "**KB001_SAFEFLAGS_FALLBACK_PASS** — M3 flow PASSES with the conservative dynarec mode; the workaround STAYS (perf delta below)"
+            echo ""
+            echo "M3 markers (leg B log):"
+            echo '```'
+            grep -E "SOS_HOST_(STARTED|SDL2_OK|FREETYPE_OK|FFMPEG_OK|MISSING_GAME_FILES)" host_box64_m3_sf.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: KB-001 bench — dynarec perf delta, 3x with vs 3x without the override
+        if: env.KB001_BENCH_REQUIRED == '1'
+        run: |
+          set -e
+          # Deterministic STATIC x86-64 payload: 200M fixed iterations mixing
+          # int and FP work; prints elapsed ns (CLOCK_MONOTONIC) + a checksum.
+          # Integrity gate: ALL 6 runs must print the IDENTICAL checksum.
+          cat > kb001_bench.c <<'EOF'
+          /* kb001_bench.c — KB-001 dynarec perf benchmark (deterministic).
+           * Built STATIC for x86-64 with the cross gcc; executed under box64
+           * with and without the conservative dynarec mode. 200M iterations
+           * of mixed int/FP work; prints elapsed ns + a checksum used as an
+           * integrity gate (identical across all runs is mandatory). */
+          #include <stdio.h>
+          #include <time.h>
+          #include <stdint.h>
+
+          #define KB001_ITERS 200000000UL /* 200M — fixed */
+
+          int main(void) {
+              volatile uint64_t seed = 123456789UL; /* defeats const-folding */
+              uint64_t s = 0;
+              double f = (double)seed;
+              struct timespec ts0, ts1;
+              uint64_t i;
+
+              clock_gettime(CLOCK_MONOTONIC, &ts0);
+              for (i = 0; i < KB001_ITERS; i++) {
+                  uint64_t x = i + (uint64_t)f; /* int add */
+                  s ^= x * 2654435761UL;        /* int mul + xor */
+                  s += s >> 7;                  /* shift + add */
+                  f += 0.5;                     /* FP add */
+                  if (f > 1.0e12) f = 1.0;      /* bounded (never taken) */
+              }
+              clock_gettime(CLOCK_MONOTONIC, &ts1);
+
+              long ns = (ts1.tv_sec - ts0.tv_sec) * 1000000000L
+                      + (ts1.tv_nsec - ts0.tv_nsec);
+              printf("KB001_BENCH checksum=%lu elapsed_ns=%ld\n",
+                     (unsigned long)s, ns);
+              return 0;
+          }
+          EOF
+          x86_64-linux-gnu-gcc -static -O2 -Wall -o kb001_bench kb001_bench.c
+          file kb001_bench | tee -a kb001_bench.log
+          : > kb001_nosf.times
+          : > kb001_sf.times
+          NO_SF_CHK=""
+          SF_CHK=""
+          for i in 1 2 3; do
+            LINE=$(env -u BOX64_DYNAREC_SAFEFLAGS BOX64_LOG=INFO \
+              ./box64-build/box64 "$PWD/kb001_bench" 2>&1 | grep -F "KB001_BENCH" || true)
+            echo "no-override run $i: $LINE" | tee -a kb001_bench.log
+            CHK=$(printf '%s' "$LINE" | sed -n 's/.*checksum=\([0-9]\{1,\}\).*/\1/p')
+            NS=$(printf '%s' "$LINE" | sed -n 's/.*elapsed_ns=\([0-9]\{1,\}\).*/\1/p')
+            [ -n "$CHK" ] && [ -n "$NS" ] || { echo "::error::KB001 bench (no-override) did not print checksum/elapsed_ns"; exit 1; }
+            NO_SF_CHK="$NO_SF_CHK $CHK"
+            echo "$NS" >> kb001_nosf.times
+          done
+          for i in 1 2 3; do
+            LINE=$(env BOX64_DYNAREC_SAFEFLAGS=2 BOX64_LOG=INFO \
+              ./box64-build/box64 "$PWD/kb001_bench" 2>&1 | grep -F "KB001_BENCH" || true)
+            echo "with-override run $i: $LINE" | tee -a kb001_bench.log
+            CHK=$(printf '%s' "$LINE" | sed -n 's/.*checksum=\([0-9]\{1,\}\).*/\1/p')
+            NS=$(printf '%s' "$LINE" | sed -n 's/.*elapsed_ns=\([0-9]\{1,\}\).*/\1/p')
+            [ -n "$CHK" ] && [ -n "$NS" ] || { echo "::error::KB001 bench (with-override) did not print checksum/elapsed_ns"; exit 1; }
+            SF_CHK="$SF_CHK $CHK"
+            echo "$NS" >> kb001_sf.times
+          done
+          # Integrity gate: the 6 checksums must be identical.
+          ALLCHK="$(printf '%s\n' $NO_SF_CHK $SF_CHK | sort -u | tr -d '[:space:]')"
+          NCHK="$(printf '%s\n' $NO_SF_CHK $SF_CHK | sort -u | grep -c . || true)"
+          if [ "$NCHK" -ne 1 ]; then
+            echo "::error::KB001 bench integrity gate FAILED — the 6 runs printed $NCHK distinct checksums:"
+            printf '%s\n' $NO_SF_CHK $SF_CHK | sort -u | sed 's/^/  checksum: /'
+            echo "::error::(dynamic x86-64 FP arithmetic must be bit-exact under box64 — investigate before trusting the timing table)"
+            exit 1
+          fi
+          MIN_NO_SF="$(sort -n kb001_nosf.times | sed -n '1p')"
+          MED_NO_SF="$(sort -n kb001_nosf.times | sed -n '2p')"
+          MIN_SF="$(sort -n kb001_sf.times | sed -n '1p')"
+          MED_SF="$(sort -n kb001_sf.times | sed -n '2p')"
+          DELTA="$(awk -v a="$MED_NO_SF" -v b="$MED_SF" 'BEGIN { if (a+0 > 0) printf "%.1f", (b-a)/a*100; else print "n/a" }')"
+          {
+            echo ""
+            echo "### KB001_PERF_DELTA — cost of the conservative dynarec mode (3 runs per config)"
+            echo ""
+            echo "| config | run1 (ns) | run2 (ns) | run3 (ns) | min (ns) | median (ns) |"
+            echo "|---|---|---|---|---|---|"
+            echo "| no override | $(sed -n '1p' kb001_nosf.times) | $(sed -n '2p' kb001_nosf.times) | $(sed -n '3p' kb001_nosf.times) | $MIN_NO_SF | $MED_NO_SF |"
+            echo "| with override | $(sed -n '1p' kb001_sf.times) | $(sed -n '2p' kb001_sf.times) | $(sed -n '3p' kb001_sf.times) | $MIN_SF | $MED_SF |"
+            echo ""
+            echo "- **KB001_PERF_DELTA** median overhead of the override: **${DELTA}%** (positive = override slower)"
+            echo "- integrity gate: 6/6 runs printed the identical checksum \`$ALLCHK\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "--- times (ns) without override ---"; cat kb001_nosf.times
+            echo "--- times (ns) with override ---";    cat kb001_sf.times
+            echo "--- checksums: $ALLCHK (identical across all 6 runs) ---"
+          } >> kb001_bench.log
+          echo "KB001_PERF_DELTA median=${DELTA}%"
 
       - name: RUN relinker under box64 (smoke — soft/informational)
         run: |
@@ -545,9 +1008,18 @@ jobs:
             echo "- dynarec: \`${DYNAREC:-unknown}\`"
             echo "- STATIC_TEST: \`${STATIC_RESULT:-FAIL}\` (mandatory)"
             echo "- DYNAMIC_TEST: \`${DYNAMIC_RESULT:-FAIL}\` (M1 stretch goal; failure does not fail this workflow)"
-            echo "- HOST_UNDER_BOX64: \`${HOST_RESULT:-NOT_RUN}\` (M2-c; anyhost --game-dir empty ⇒ exit 1 + markers, mandatory)"
-            echo "- artifacts: \`box64-arm64-poc\` (box64 binary + payloads + run logs)"
-            echo "- artifacts (M2-c): \`host-linux-x64\` + host_box64.log/relinker_box64.log inside \`box64-arm64-poc\`"
+            echo "- HOST_UNDER_BOX64_M3: \`${HOST_RESULT:-NOT_RUN}\` (dynamic anyhost incl. FREETYPE/FFMPEG probes; mandatory)"
+            if [ "${KB001_OUTCOME:-}" = "PASS_NO_SAFEFLAGS" ]; then
+              echo "- KB-001 matrix: leg A (no dynarec override) = **PASS** → legacy workaround REMOVED from the default path (kb001_removed=1)"
+            elif [ "${KB001_OUTCOME:-}" = "PASS_WITH_SAFEFLAGS" ]; then
+              echo "- KB-001 matrix: leg A FAILED (reason=${KB001_NOSF_REASON:-unknown}); leg B WITH override = **PASS** (KB001_SAFEFLAGS_FALLBACK_PASS) — workaround STAYS, see KB001_PERF_DELTA"
+            elif [ -n "${KB001_OUTCOME:-}" ]; then
+              echo "- KB-001 matrix: leg A FAILED (reason=${KB001_NOSF_REASON:-unknown}) and the fallback did not pass"
+            else
+              echo "- KB-001 matrix: NOT_RUN"
+            fi
+            echo "- artifacts: \`box64-arm64-poc\` (box64 binary + payloads + run logs incl. host_box64_m3.log, kb001_bench.log when produced)"
+            echo "- artifacts (M2-c/M3): \`host-linux-x64\` (dynamic anyhost + 3 guest libs)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload artifacts (box64 binary + payloads + logs)
@@ -562,16 +1034,18 @@ jobs:
             payloads/x86_64/hello_dyn
             run_static.log
             run_dynamic.log
-            host_box64.log
+            host_box64_m3.log
+            host_box64_m3_sf.log
+            kb001_bench.log
             relinker_box64.log
             cmake_dynarec_on.log
             cmake_dynarec_off.log
 
   apk:
-    name: APK PoC (box64 + payload x86-64 + anyhost M2)
-    # needs host-linux ONLY as an artifact dependency: the static anyhost built
-    # there is installed here as libanyhost64.so (jniLibs pattern). If
-    # host-linux fails, this job is skipped.
+    name: APK PoC (box64 + payload + anyhost M3 dynamic + guest libs + native SDL2 ARM64)
+    # needs host-linux ONLY as an artifact dependency: the DYNAMIC anyhost and
+    # the guest libs built there are installed here as jniLibs (lib*.so rename
+    # pattern). If host-linux fails, this job is skipped.
     needs: host-linux
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -579,7 +1053,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download host-linux-x64 artifact (built by job host-linux)
+      - name: Checkout SDL2 submodule (pinned 4b69833) into sos-src/3rdparty/SDL2 (for native ARM64 build)
+        uses: actions/checkout@v4
+        with:
+          repository: libsdl-org/SDL
+          ref: 4b69833bc54abf3dd3288d4aa7afbba527775e5b
+          path: sos-src/3rdparty/SDL2
+          fetch-depth: 1
+
+      - name: Download host-linux-x64 artifact (jniLibs payload — dynamic anyhost M3 + guest libs)
         uses: actions/download-artifact@v4
         with:
           name: host-linux-x64
@@ -612,7 +1094,77 @@ jobs:
       - name: Build box64 (NDK/bionic) + payload x86-64 into jniLibs
         run: bash scripts/ci-build-box64.sh
 
-      - name: Install anyhost as libanyhost64.so (M2 host binary into jniLibs)
+      # M3: build the NATIVE ARM64 SDL2 (dummy/offscreen, minimal) from the
+      # vendored submodule with the SAME NDK toolchain style as
+      # scripts/ci-build-box64.sh (discovery + flexible page sizes policy).
+      # Staged as libSDL2_sos_native.so — AGP only packages lib*.so names; the
+      # device-side rename to libSDL2-2.0.so.0 happens IN JAVA (app runtime),
+      # NOT here. This lib backs box64's wrappedsdl2 via bionic dlopen.
+      - name: Build native SDL2 (ARM64/bionic) from vendored submodule → libSDL2_sos_native.so
+        run: |
+          set -euo pipefail
+          # NDK discovery — same style/priority as scripts/ci-build-box64.sh.
+          NDK_HOME=""
+          if [ -n "${ANDROID_HOME:-}" ] && ls -d "$ANDROID_HOME"/ndk/* >/dev/null 2>&1; then
+            NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/* 2>/dev/null | sort -V | tail -n 1)"
+          elif [ -n "${ANDROID_NDK_HOME:-}" ] && [ -d "$ANDROID_NDK_HOME" ]; then
+            NDK_HOME="$ANDROID_NDK_HOME"
+          elif [ -n "${ANDROID_NDK_LATEST_HOME:-}" ] && [ -d "$ANDROID_NDK_LATEST_HOME" ]; then
+            NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          fi
+          [ -n "$NDK_HOME" ] && [ -f "$NDK_HOME/build/cmake/android.toolchain.cmake" ] \
+            || { echo "::error::Android NDK with build/cmake/android.toolchain.cmake not found (ANDROID_HOME=${ANDROID_HOME:-unset})"; exit 1; }
+          echo "NDK selected: $NDK_HOME"
+          # Flexible page sizes — same policy as ci-build-box64.sh (opt-in since
+          # NDK r27, default ON in r28+; we pass it only on r28+).
+          NDK_MAJOR="$(basename "$NDK_HOME")"; NDK_MAJOR="${NDK_MAJOR%%.*}"
+          PAGE_SIZE_FLAG=""
+          if [ "${NDK_MAJOR:-0}" -ge 28 ] 2>/dev/null; then
+            PAGE_SIZE_FLAG="-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+          fi
+          # Minimal headless SDL2 shared — EXACT flag set of
+          # scripts/m3-build-guest-libs.sh; option names verified against
+          # 3rdparty/SDL2/CMakeLists.txt @ 4b69833 (2.33.0).
+          cmake -S sos-src/3rdparty/SDL2 -B build-sdl2-android -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DCMAKE_BUILD_TYPE=Release \
+            $PAGE_SIZE_FLAG \
+            -DSDL_SHARED=ON -DSDL_STATIC=OFF \
+            -DSDL_TEST=OFF -DSDL_TESTS=OFF \
+            -DSDL_X11=OFF -DSDL_WAYLAND=OFF -DSDL_KMSDRM=OFF \
+            -DSDL_OPENGL=OFF -DSDL_OPENGLES=OFF -DSDL_VULKAN=OFF \
+            -DSDL_OFFSCREEN=ON -DSDL_DUMMYVIDEO=ON \
+            -DSDL_JOYSTICK=ON -DSDL_HAPTIC=OFF -DSDL_HIDAPI=OFF \
+            -DSDL_SENSOR=OFF -DSDL_AUDIO=OFF -DSDL_RENDER=OFF \
+            -DSDL_POWER=OFF \
+            -DSDL_LIBUDEV=OFF
+          cmake --build build-sdl2-android -j2
+          SDL2SO="$(find build-sdl2-android -maxdepth 2 -name 'libSDL2-2.0.so.0*' -type f | head -n1)"
+          [ -n "$SDL2SO" ] || { echo "::error::libSDL2-2.0.so.0 not produced by the SDL2 ARM64 build"; exit 1; }
+          mkdir -p app/src/main/jniLibs/arm64-v8a
+          cp -f "$SDL2SO" app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so
+          file app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so
+          readelf -d app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -E 'SONAME|NEEDED' || true
+          # HARD evidence: ARM aarch64, dynamically linked, SONAME libSDL2-2.0.so.0.
+          file app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -q "ARM aarch64" \
+            || { echo "::error::SDL2 native lib is NOT ARM aarch64"; exit 1; }
+          file app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -qi "dynamically linked" \
+            || { echo "::error::SDL2 native lib is NOT dynamically linked"; exit 1; }
+          readelf -d app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -q 'SONAME.*\[libSDL2-2\.0\.so\.0\]' \
+            || { echo "::error::SDL2 native lib SONAME is not libSDL2-2.0.so.0"; exit 1; }
+          {
+            echo ""
+            echo "### Native SDL2 (ARM64/bionic) → jniLibs/libSDL2_sos_native.so"
+            echo ""
+            echo '```'
+            file app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so
+            readelf -d app/src/main/jniLibs/arm64-v8a/libSDL2_sos_native.so | grep -E 'SONAME|NEEDED' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install anyhost as libanyhost64.so (M3 DYNAMIC host binary into jniLibs)
         run: |
           set -e
           # upload-artifact zips may drop the exec bit — guarantee it before cp.
@@ -620,25 +1172,78 @@ jobs:
           cp -f host-x64/anyhost app/src/main/jniLibs/arm64-v8a/libanyhost64.so
           chmod 755 app/src/main/jniLibs/arm64-v8a/libanyhost64.so
           file app/src/main/jniLibs/arm64-v8a/libanyhost64.so
+          # M3 HARD: the shipped anyhost MUST be the DYNAMIC M3 build
+          # (DT_NEEDED libSDL2-2.0.so.0 + the 3 *_sos guest libs).
+          if file app/src/main/jniLibs/arm64-v8a/libanyhost64.so | grep -qi "statically linked"; then
+            echo "::error::libanyhost64.so is STATIC — M3 contract requires the DYNAMIC build (DT_NEEDED libSDL2-2.0.so.0)"
+            exit 1
+          fi
+          readelf -d app/src/main/jniLibs/arm64-v8a/libanyhost64.so | grep NEEDED
           {
             echo ""
-            echo "### anyhost → jniLibs (M2)"
+            echo "### anyhost → jniLibs (M3 dynamic)"
             echo ""
             echo '```'
             file app/src/main/jniLibs/arm64-v8a/libanyhost64.so
+            readelf -d app/src/main/jniLibs/arm64-v8a/libanyhost64.so | grep NEEDED
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Evidence — jniLibs contents
+      - name: Install guest libs (libavcodec_sos/libavutil_sos/libfreetype_sos) into jniLibs
         run: |
+          set -e
+          for f in libavcodec_sos.so libavutil_sos.so libfreetype_sos.so; do
+            test -f "host-x64/$f" || { echo "::error::host-x64/$f missing from artifact host-linux-x64"; exit 1; }
+            cp -f "host-x64/$f" app/src/main/jniLibs/arm64-v8a/
+            chmod 755 "app/src/main/jniLibs/arm64-v8a/$f"
+          done
+          ls -la app/src/main/jniLibs/arm64-v8a
+
+      - name: Evidence — jniLibs contents (M3 — hard assert)
+        run: |
+          set -e
+          JDIR=app/src/main/jniLibs/arm64-v8a
+          ls -la "$JDIR"
+          for f in "$JDIR"/*; do file "$f"; done
           {
-            echo "## jniLibs evidence (app/src/main/jniLibs/arm64-v8a)"
+            echo "## jniLibs evidence (app/src/main/jniLibs/arm64-v8a) — M3"
             echo '```'
-            ls -la app/src/main/jniLibs/arm64-v8a
-            file app/src/main/jniLibs/arm64-v8a/libanyhost64.so
-            for f in app/src/main/jniLibs/arm64-v8a/*; do file "$f"; done
+            ls -la "$JDIR"
+            for f in "$JDIR"/*; do file "$f"; done
             echo '```'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+            echo ""
+            echo "readelf -d (key libs):"
+            echo '```'
+            readelf -d "$JDIR/libanyhost64.so" | grep NEEDED || true
+            readelf -d "$JDIR/libSDL2_sos_native.so" | grep -E 'SONAME|NEEDED' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          BAD=""
+          # Exact 7-file manifest (all lib*.so — AGP packaging compliant).
+          for f in libbox64.so libpayload64.so libanyhost64.so libavcodec_sos.so libavutil_sos.so libfreetype_sos.so libSDL2_sos_native.so; do
+            test -f "$JDIR/$f" || BAD="$BAD missing:$f"
+          done
+          # anyhost: DYNAMIC x86-64 (M3 contract).
+          file "$JDIR/libanyhost64.so" | grep -q "x86-64" || BAD="$BAD arch:anyhost"
+          if file "$JDIR/libanyhost64.so" | grep -qi "statically linked"; then BAD="$BAD static:anyhost(M3-must-be-dynamic)"; fi
+          # SDL2 native: ARM aarch64 shared.
+          file "$JDIR/libSDL2_sos_native.so" | grep -q "ARM aarch64" || BAD="$BAD arch:SDL2_native"
+          # Guest libs: x86-64 shared objects.
+          for f in libavcodec_sos.so libavutil_sos.so libfreetype_sos.so; do
+            file "$JDIR/$f" | grep -q "x86-64" || BAD="$BAD arch:$f"
+          done
+          # box64 ARM64 + payload x86-64 (pre-existing steps).
+          file "$JDIR/libbox64.so" | grep -q "ARM aarch64" || BAD="$BAD arch:box64"
+          file "$JDIR/libpayload64.so" | grep -q "x86-64" || BAD="$BAD arch:payload"
+          if [ -n "$BAD" ]; then
+            echo "::error::jniLibs M3 evidence assertion FAILED:$BAD"
+            {
+              echo ""
+              echo "**JNI_LIBS_M3_EVIDENCE_FAILED**$BAD"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "**JNI_LIBS_M3_EVIDENCE_OK** — 7/7 libs present; anyhost dynamic x86-64; SDL2 native ARM aarch64; guest libs x86-64" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Assemble debug APK (Gradle 8.9 + AGP 8.7.3)
         run: gradle -p . :app:assembleDebug --no-daemon --stacktrace
