@@ -1,0 +1,283 @@
+From 7178874da3f86f96b71a241440654cb5b61dc07b Mon Sep 17 00:00:00 2001
+From: SoS Port Bot <bot@localhost>
+Date: Sun, 4 Oct 2026 21:00:21 +0000
+Subject: [PATCH] M3: guest libs probes (FFmpeg+freetype) + dynamic SDL2 link
+ for anyhost
+
+- anyhost: sondas M3 entre SOS_HOST_SDL2_OK e a validacao de arquivos
+  (contrato docs/M3-LIBS-RUNTIME.md secao 3), guardadas por
+  ANYHOST_M3_PROBES; sem a macro, emite SOS_HOST_M3_SKIPPED uma vez.
+  * freetype: FT_Init_FreeType + FT_Library_Version ->
+    SOS_HOST_FREETYPE_OK version=<maj.min.patch>
+  * ffmpeg: avcodec_find_decoder(HEVC,H264) + open real (alloc_context3 +
+    open2 + free_context) -> SOS_HOST_FFMPEG_OK codec=hevc,h264
+    avf=<av_version_info()> (string de RUNTIME da libavutil carregada)
+  * falha: SOS_HOST_M3_FAIL lib=<freetype|ffmpeg> reason=<msg> +
+    SOS_HOST_INTERNAL_ERROR reason=m3-probe-failed, exit 2
+  * --version/--help continuam saindo antes de qualquer sonda (M2)
+- host/CMakeLists.txt: option(ANYHOST_M3_PROBES) [include dirs
+  ANYHOST_FFMPEG_INCLUDE/ANYHOST_FREETYPE_INCLUDE, link full-path das
+  *_sos.so de ANYHOST_GUEST_LIBS_DIR -> DT_NEEDED = SONAME patcheado];
+  option(ANYHOST_SDL2_DYNAMIC) [SDL2 via find_library SDL2-2.0.so.0 em
+  ANYHOST_SDL2_LIB_DIR + ANYHOST_SDL2_INCLUDE, sem add_subdirectory da
+  vendida]; default (ambas OFF) permanece byte-identico ao M2 (anyhost
+  estatico com SDL2 vendida); relinker ESTATICO em ambos os modos
+  (flags -static movidas para fora do if(), so o add_subdirectory da
+  SDL2 e condicional).
+- Headers do FFmpeg nao tem extern "C"; freetype usa FT_BEGIN_HEADER.
+---
+ host/CMakeLists.txt | 94 ++++++++++++++++++++++++++++++++++++++++++---
+ host/anyhost.cpp    | 81 ++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 169 insertions(+), 6 deletions(-)
+
+diff --git a/host/CMakeLists.txt b/host/CMakeLists.txt
+index 63ba464..8e40cbf 100644
+--- a/host/CMakeLists.txt
++++ b/host/CMakeLists.txt
+@@ -1,12 +1,23 @@
+-# host/CMakeLists.txt — superprojeto standalone do host Linux (anyhost), M2.
++# host/CMakeLists.txt — superprojeto standalone do host Linux (anyhost), M2+M3.
+ #
+ # Constrói, SEM tocar no CMakeLists.txt raiz do upstream:
+-#   anyhost   — host mínimo deste diretório (link estático SDL2-static)
+-#   relinker  — alvo herdado de core/relinker do próprio clone (estático)
++#   anyhost   — host mínimo deste diretório
++#   relinker  — alvo herdado de core/relinker do próprio clone (SEMPRE estático)
+ #   SDL2      — submódulo 3rdparty/SDL2 com configuração mínima dummy-first
++#               (apenas no modo estático default)
+ #
+-# Contrato: sos-ps5-android/docs/M2-LINUX-HOST.md seção 2.4.
++# Contrato: sos-ps5-android/docs/M2-LINUX-HOST.md seção 2.4 e
++#           sos-ps5-android/docs/M3-LIBS-RUNTIME.md seções 3-4.
+ # Uso: cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Release
++#
++# Modo M2 (default, sem opções): idêntico ao M2 — anyhost estático com a
++# SDL2 vendida, sem sondas (emite SOS_HOST_M3_SKIPPED).
++# Modo M3 (todas as opções ON):
++#   -DANYHOST_M3_PROBES=ON -DANYHOST_GUEST_LIBS_DIR=<stage> \
++#   -DANYHOST_FFMPEG_INCLUDE=<raiz do fonte ffmpeg> \
++#   -DANYHOST_FREETYPE_INCLUDE=<freetype>/include \
++#   -DANYHOST_SDL2_DYNAMIC=ON -DANYHOST_SDL2_INCLUDE=<sdl2>/include \
++#   -DANYHOST_SDL2_LIB_DIR=<dir com libSDL2-2.0.so.0>
+ cmake_minimum_required(VERSION 3.20)
+ project(AnyHost CXX)
+ 
+@@ -16,10 +27,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ # Testes do relinker (Python/CTest) ficam fora do escopo do M2.
+ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+ 
++# ---- Opções M3 (default OFF = comportamento M2 byte-idêntico) ----
++option(ANYHOST_M3_PROBES "Enable FFmpeg/freetype guest-lib probes in anyhost" OFF)
++option(ANYHOST_SDL2_DYNAMIC "Link system/shared SDL2 (libSDL2-2.0.so.0) instead of vendored static" OFF)
++set(ANYHOST_GUEST_LIBS_DIR "" CACHE PATH "Dir com as libs guest M3 (libavcodec_sos.so, libavutil_sos.so, libfreetype_sos.so)")
++set(ANYHOST_FFMPEG_INCLUDE "" CACHE PATH "Headers do FFmpeg (raiz do fonte, com libavcodec/ e libavutil/)")
++set(ANYHOST_FREETYPE_INCLUDE "" CACHE PATH "Headers do freetype (diretório com ft2build.h)")
++set(ANYHOST_SDL2_INCLUDE "" CACHE PATH "Headers do SDL2 (diretório com SDL.h) — usado com ANYHOST_SDL2_DYNAMIC=ON")
++set(ANYHOST_SDL2_LIB_DIR "" CACHE PATH "Diretório com libSDL2-2.0.so.0 — usado com ANYHOST_SDL2_DYNAMIC=ON")
++
+ # Raiz do clone upstream — este arquivo vive em <upstream>/host.
+ get_filename_component(ANYPS5_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+ 
+ # ---- SDL2 estática MÍNIMA (headless-first; X11/Vulkan entram no M3/M5) ----
++# Somente no modo estático M2 (ANYHOST_SDL2_DYNAMIC=OFF); no modo dinâmico o
++# add_subdirectory da SDL2 vendida é pulado por completo.
++if(NOT ANYHOST_SDL2_DYNAMIC)
+ set(SDL_SHARED   OFF CACHE BOOL "" FORCE)
+ set(SDL_STATIC   ON  CACHE BOOL "" FORCE)
+ set(SDL_TEST     OFF CACHE BOOL "" FORCE)
+@@ -36,19 +59,24 @@ set(SDL_HIDAPI   ON  CACHE BOOL "" FORCE)
+ set(SDL_SENSOR   OFF CACHE BOOL "" FORCE)
+ set(SDL_POWER    OFF CACHE BOOL "" FORCE)
+ set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
++endif()
+ 
+ # Flags de linker para os NOSSOS executáveis (mesmo padrão do CMake raiz:
+ # linhas 23 e 40-43 — "-static -static-libgcc -static-libstdc++"), sem vazar
+ # para o sub-build da SDL2: o raiz salva/limpa/restaura CMAKE_EXE_LINKER_FLAGS
+ # ao redor de add_subdirectory(3rdparty/SDL2) e nós replicamos o padrão.
+ # Versão LISTA para target_link_options e versão STRING para CMAKE_EXE_LINKER_FLAGS.
++# FORA do if() acima: o relinker depende delas em AMBOS os modos (ele é sempre
++# estático — contrato M3: "relinker CONTINUA estático").
+ set(ANYPS5_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
+ set(ANYPS5_EXE_LINK_OPTIONS -static -static-libgcc -static-libstdc++)
+ 
++if(NOT ANYHOST_SDL2_DYNAMIC)
+ set(ANYPS5_SAVED_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
+ set(CMAKE_EXE_LINKER_FLAGS "")
+ add_subdirectory("${ANYPS5_ROOT}/3rdparty/SDL2" 3rdparty/SDL2-build)
+ set(CMAKE_EXE_LINKER_FLAGS "${ANYPS5_SAVED_EXE_LINKER_FLAGS}")
++endif()
+ 
+ # relinker também estático: flag setada ANTES de add_subdirectory (o alvo
+ # 'relinker' herda CMAKE_EXE_LINKER_FLAGS) e restaurada depois.
+@@ -64,5 +92,59 @@ set_target_properties(relinker PROPERTIES
+         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+ 
+ add_executable(anyhost anyhost.cpp)
+-target_link_libraries(anyhost PRIVATE SDL2-static)
+-target_link_options(anyhost PRIVATE ${ANYPS5_EXE_LINK_OPTIONS})
++if(ANYHOST_SDL2_DYNAMIC)
++    # ---- M3: SDL2 dinâmica — DT_NEEDED precisa ser libSDL2-2.0.so.0 exato ----
++    # (no CI o par include/lib vem do apt libsdl2-dev; local, do STAGE). Link
++    # por caminho completo: o linker registra o SONAME do arquivo como NEEDED.
++    if(NOT ANYHOST_SDL2_INCLUDE)
++        message(FATAL_ERROR "ANYHOST_SDL2_DYNAMIC=ON exige ANYHOST_SDL2_INCLUDE (diretório com SDL.h)")
++    endif()
++    find_library(ANYHOST_SDL2_LIB
++            NAMES SDL2-2.0.so.0 libSDL2-2.0.so
++            PATHS "${ANYHOST_SDL2_LIB_DIR}"
++            NO_DEFAULT_PATH)
++    if(NOT ANYHOST_SDL2_LIB)
++        # find_library pode falhar para sufixos não-canhotos (.so.0): cai para
++        # o caminho direto (mesma semântica de link por full path).
++        if(EXISTS "${ANYHOST_SDL2_LIB_DIR}/libSDL2-2.0.so.0")
++            set(ANYHOST_SDL2_LIB "${ANYHOST_SDL2_LIB_DIR}/libSDL2-2.0.so.0")
++        elseif(EXISTS "${ANYHOST_SDL2_LIB_DIR}/libSDL2-2.0.so")
++            set(ANYHOST_SDL2_LIB "${ANYHOST_SDL2_LIB_DIR}/libSDL2-2.0.so")
++        endif()
++    endif()
++    if(NOT ANYHOST_SDL2_LIB)
++        message(FATAL_ERROR "libSDL2-2.0.so.0 não encontrada em ANYHOST_SDL2_LIB_DIR=${ANYHOST_SDL2_LIB_DIR}")
++    endif()
++    target_include_directories(anyhost PRIVATE "${ANYHOST_SDL2_INCLUDE}")
++    target_link_libraries(anyhost PRIVATE "${ANYHOST_SDL2_LIB}")
++else()
++    # Modo M2 default: SDL2 estática vendida + executável 100% estático.
++    target_link_libraries(anyhost PRIVATE SDL2-static)
++    target_link_options(anyhost PRIVATE ${ANYPS5_EXE_LINK_OPTIONS})
++endif()
++
++if(ANYHOST_M3_PROBES)
++    # ---- M3: sondas FFmpeg/freetype + link das libs guest *_sos ----
++    if(NOT ANYHOST_GUEST_LIBS_DIR)
++        message(FATAL_ERROR "ANYHOST_M3_PROBES=ON exige ANYHOST_GUEST_LIBS_DIR")
++    endif()
++    if(NOT ANYHOST_FFMPEG_INCLUDE)
++        message(FATAL_ERROR "ANYHOST_M3_PROBES=ON exige ANYHOST_FFMPEG_INCLUDE")
++    endif()
++    if(NOT ANYHOST_FREETYPE_INCLUDE)
++        message(FATAL_ERROR "ANYHOST_M3_PROBES=ON exige ANYHOST_FREETYPE_INCLUDE")
++    endif()
++    foreach(lib libavcodec_sos.so libavutil_sos.so libfreetype_sos.so)
++        if(NOT EXISTS "${ANYHOST_GUEST_LIBS_DIR}/${lib}")
++            message(FATAL_ERROR "lib guest ausente: ${ANYHOST_GUEST_LIBS_DIR}/${lib}")
++        endif()
++    endforeach()
++    target_compile_definitions(anyhost PRIVATE ANYHOST_M3_PROBES)
++    target_include_directories(anyhost PRIVATE
++            "${ANYHOST_FFMPEG_INCLUDE}" "${ANYHOST_FREETYPE_INCLUDE}")
++    # Full path ⇒ DT_NEEDED = SONAME de cada *_sos.so (patcheado no STAGE).
++    target_link_libraries(anyhost PRIVATE
++            "${ANYHOST_GUEST_LIBS_DIR}/libavcodec_sos.so"
++            "${ANYHOST_GUEST_LIBS_DIR}/libavutil_sos.so"
++            "${ANYHOST_GUEST_LIBS_DIR}/libfreetype_sos.so")
++endif()
+diff --git a/host/anyhost.cpp b/host/anyhost.cpp
+index 4f60942..ddcd7b2 100644
+--- a/host/anyhost.cpp
++++ b/host/anyhost.cpp
+@@ -35,6 +35,21 @@
+ #include <string>
+ #include <vector>
+ 
++#ifdef ANYHOST_M3_PROBES
++// ---- M3: sondas das libs guest (contrato: docs/M3-LIBS-RUNTIME.md §3) ----
++// freetype do submodule upstream (headers: include/ com ft2build.h) e FFmpeg
++// n6.1.2 (headers: raiz do fonte ou make install, com libavcodec/ e libavutil/).
++// freetype tem guarda própria via FT_BEGIN_HEADER; os headers públicos do
++// FFmpeg NÃO têm extern "C" — o consumidor precisa envolver.
++#include <ft2build.h>
++#include FT_FREETYPE_H
++
++extern "C" {
++#include <libavcodec/avcodec.h>
++#include <libavutil/avutil.h>
++}
++#endif
++
+ namespace fs = std::filesystem;
+ 
+ namespace {
+@@ -162,6 +177,62 @@ void linkIntoApp0(const fs::path& gameDir, const char* name) {
+     if (ec) failInternal("app0-link-failed", "Falha ao criar " + link.string() + ": " + ec.message());
+ }
+ 
++#ifdef ANYHOST_M3_PROBES
++
++// ---- M3: sondas das libs guest (contrato: docs/M3-LIBS-RUNTIME.md §3) ----
++// Executadas ENTRE SOS_HOST_SDL2_OK e a validação dos arquivos do jogo.
++// Idempotentes e sem estado; ordem fixa: freetype primeiro, FFmpeg depois.
++// Falha de sonda = SOS_HOST_M3_FAIL + SOS_HOST_INTERNAL_ERROR (exit 2).
++[[noreturn]] void failM3Probe(const char* lib, const std::string& msg) {
++    printMarker("SOS_HOST_M3_FAIL lib=" + std::string(lib) + " reason=" + oneLine(msg.c_str()));
++    failInternal("m3-probe-failed");
++}
++
++// FT_Init_FreeType + FT_Library_Version (versão REAL da lib carregada).
++void probeFreetype() {
++    FT_Library library = nullptr;
++    const FT_Error err = FT_Init_FreeType(&library);
++    if (err != 0 || library == nullptr) {
++        failM3Probe("freetype", "FT_Init_FreeType failed (err=" + std::to_string(err) + ")");
++    }
++    FT_Int major = 0, minor = 0, patch = 0;
++    FT_Library_Version(library, &major, &minor, &patch);
++    char line[64];
++    std::snprintf(line, sizeof(line), "SOS_HOST_FREETYPE_OK version=%ld.%ld.%ld",
++                  static_cast<long>(major), static_cast<long>(minor), static_cast<long>(patch));
++    printMarker(line);
++    FT_Done_FreeType(library);
++}
++
++// avcodec_find_decoder(HEVC e H264) + open REAL dos dois decoders
++// (alloc_context3 + open2 + free_context). Versão via av_version_info()
++// (string de runtime da libavutil carregada, não macro de header).
++void probeFfmpeg() {
++    const AVCodec* decoders[2] = {avcodec_find_decoder(AV_CODEC_ID_HEVC),
++                                  avcodec_find_decoder(AV_CODEC_ID_H264)};
++    if (decoders[0] == nullptr || decoders[1] == nullptr) {
++        failM3Probe("ffmpeg", "avcodec_find_decoder hevc/h264 not found");
++    }
++    for (const AVCodec* codec : decoders) {
++        AVCodecContext* ctx = avcodec_alloc_context3(codec);
++        if (ctx == nullptr) failM3Probe("ffmpeg", "avcodec_alloc_context3 failed");
++        if (avcodec_open2(ctx, codec, nullptr) < 0) {
++            avcodec_free_context(&ctx);
++            failM3Probe("ffmpeg", std::string("avcodec_open2 failed for ") + codec->name);
++        }
++        avcodec_free_context(&ctx);
++    }
++    char line[96];
++    std::snprintf(line, sizeof(line), "SOS_HOST_FFMPEG_OK codec=hevc,h264 avf=%s", av_version_info());
++    printMarker(line);
++}
++
++void runM3Probes() {
++    probeFreetype();
++    probeFfmpeg();
++}
++#endif // ANYHOST_M3_PROBES
++
+ // launcher.cpp:992-1062 — roda o jogo com logs em logs/game.log + journal em
+ // logs/launcher.log. Simplificação do M2 (caminho não exercido: exige dump do
+ // jogo): execução única, sem o laço de reinício em crash do launcher.
+@@ -232,6 +303,16 @@ int main(int argc, char* argv[]) {
+     g_driverIsDummy = driverIsHeadless(driver);
+     printMarker(std::string("SOS_HOST_SDL2_OK driver=") + (driver != nullptr ? driver : "unknown"));
+ 
++    // ---- M3: sondas das libs guest (contrato M3-LIBS-RUNTIME.md §3) ----
++    // --version/--help NUNCA chegam aqui (saem antes da SDL2, paridade M2).
++    // Build M2-compatível (sem sondas) emite SOS_HOST_M3_SKIPPED UMA vez —
++    // ausência de sondas nunca é silenciosa.
++#ifdef ANYHOST_M3_PROBES
++    runM3Probes();
++#else
++    printMarker("SOS_HOST_M3_SKIPPED");
++#endif
++
+     // ---- Validação dos arquivos (contrato 2.3; ordem paridade com wWinMain) ----
+     // launcher.cpp:882-897 — eboot.bin OU eboot.elf; sem os dois => tela-alvo.
+     fs::path chosen; // eboot escolhido (eboot.bin ou eboot.elf descriptografado)
+-- 
+2.47.3
+
