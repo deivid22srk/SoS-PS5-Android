@@ -262,8 +262,10 @@ real o host dinâmico morre com SIGSEGV, KB-002).
 - **APK do M3 fix #1 (versionCode 2 / versionName 0.2.0-poc-m3)** — contém a
   glibc guest x86-64 (KB-002). O APK do run 37239106249 (versionCode 1) está
   SUPERADO: nele o M3 falha com exit=139 (SIGSEGV por glibc ausente). Use o
-  artifact `SoS-PS5-Android-PoC-debug.apk` do run do fix #1 (link no
-  PROGRESS.md). O aparelho aceita instalar por cima (versionCode cresceu).
+  artifact `SoS-PS5-Android-PoC-debug.apk` do run do fix #1:
+  [37242064025](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37242064025)
+  (25,6 MB; 7 jniLibs + assets/rootfs). O aparelho aceita instalar por cima
+  (versionCode cresceu).
 - Como conferir se o APK novo está instalado: no quadro de diagnóstico de
   abertura, além das **7 jniLibs** `presente`, a linha
   `glibc guest x86-64 (assets/rootfs):` deve mostrar

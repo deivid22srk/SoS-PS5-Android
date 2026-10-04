@@ -132,8 +132,11 @@ Critérios de aceite:
    guest no APK (**7 jniLibs**, `JNI_LIBS_M3_EVIDENCE_OK`); botão M3 no app
    com veredito verde exigindo os 5 markers + exit 1 (M1/M2 intocados).
 4. [ ] Teste on-device (motorola edge 30 fusion, Android 14): botão M3 verde
-   no app, logcat com markers, sem crash. APK do run 37239106249 arquivado
-   (23,9 MB, 7 jniLibs) — aguardando o usuário.
+   no app, logcat com markers, sem crash. 1ª tentativa (APK v1, run
+   37239106249) = FALHA exit=139 por glibc guest ausente no device (KB-002) →
+   fix #1 (run
+   [37242064025](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37242064025),
+   APK v2 25,6 MB com glibc guest via assets/rootfs) aguardando o usuário.
 
 Histórico de status (fix-loop CI do M3, 2026-10-05):
 - Run 37237030734: host-linux SUCCESS no 1º try; box64-arm64 SUCCESS
@@ -145,6 +148,10 @@ Histórico de status (fix-loop CI do M3, 2026-10-05):
   sufixo de versão); find/assert atualizados (deba957).
 - Run 37239106249: **3/3 jobs SUCCESS** — critérios 1-3 concluídos; APK v4
   arquivado (download/SoS-PS5-Android-M3-debug.apk).
+- Run 37242064025 (fix #1 pós-falha de aparelho, KB-002): **3/3 jobs SUCCESS
+  no 1º try** — glibc guest x86-64 via assets/rootfs (`M3_GLIBC_ASSETS_OK`) +
+  UI rolável + versionCode 2; APK v5 arquivado
+  (download/SoS-PS5-Android-M3-fix1-debug.apk).
 
 ## M4 — Memória `[ ]`
 

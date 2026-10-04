@@ -647,3 +647,34 @@ correções documentais/higiene aplicadas e re-validadas).
 - APK v4 arquivado: `download/SoS-PS5-Android-M3-debug.apk` (7 jniLibs
   conferidas por zip listing).
 - Pendente para fechar o M3: critério 4 (teste on-device — ON_DEVICE_TEST.md §8).
+
+## M3 — Fix #1 on-device (2026-10-05, task 3-g): glibc guest + UI rolável
+
+- **Falha #1 no aparelho** (motorola edge 30 fusion, Android 14; logcat em
+  `docs/evidence/m3-device-logcat-2026-10-05-falha1.txt`): botão M3 →
+  `FALHA (M3): resultado inesperado, exit=139` (SIGSEGV) após ~27 relocações
+  não resolvidas (`__libc_start_main@GLIBC_2.34`, locale, gettext, `_chk`).
+  Causa raiz: o anyhost M3 é dinâmico e exige a glibc x86-64 REAL; o CI
+  (leg A) só passou porque punha a glibc cross no `BOX64_LD_LIBRARY_PATH` —
+  o device não tinha nada equivalente (no M2 não ocorria: binário estático).
+  → **KB-002** (KNOWN_BUGS.md); premissa do contrato §1 refutada e emendada
+  (§7).
+- **Correção (paridade exata com o leg A):** APK embarca
+  `assets/rootfs/{libc.so.6, ld-linux-x86-64.so.2, libm.so.6}` do
+  `libc6-amd64-cross` do MESMO runner que constrói o anyhost; o app extrai
+  para `<filesDir>/rootfs/lib/` (já no guest path). Assert HARD novo no job
+  apk: `M3_GLIBC_ASSETS_OK`. Rootfs mínima agora = 4 arquivos.
+- **UI:** relato "não dá pra rolar" corrigido — UM ScrollView de página
+  inteira (o layout antigo tinha topo fixo + TextView selecionável dentro de
+  ScrollView interno, que engolia os gestos). versionCode 2 / 0.2.0-poc-m3.
+- **Revisão independente (3-g):** veredito GO, zero bloqueios
+  (`review-3g.md`; regexes validados contra binários reais, pacote
+  `libc6-amd64-cross` 2.39 do runner baixado e testado, `readelf -W`
+  obrigatório contra truncamento `[...]@GLIBC_2.34`).
+- **CI:** run
+  [37242064025](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37242064025)
+  (sha 8ab2e97): **3/3 SUCCESS no 1º try do fix** (host-linux, box64-arm64,
+  apk). APK arquivado: `download/SoS-PS5-Android-M3-fix1-debug.apk`
+  (25,6 MB; 7 jniLibs + 3 assets de glibc conferidos por zip listing).
+- Pendente para fechar o M3: critério 4 — reteste on-device com este APK
+  (ON_DEVICE_TEST.md §8).
