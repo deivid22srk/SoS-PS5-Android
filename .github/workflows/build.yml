@@ -11,7 +11,9 @@
 #   the host is configured with ANYHOST_M3_PROBES=ON / ANYHOST_SDL2_DYNAMIC=ON
 #   (system libSDL2-2.0.so.0 from apt libsdl2-dev + stage-libs guest libs).
 #   Result: anyhost is DYNAMIC (DT_NEEDED: libSDL2-2.0.so.0, libavcodec_sos.so,
-#   libavutil_sos.so, libfreetype_sos.so, libstdc++, libgcc_s, libc) while the
+#   libavutil_sos.so, libfreetype_sos.so, libc) with libstdc++/libgcc_s linked
+#   STATICALLY (-static-libstdc++ -static-libgcc: box64 has no wrapper for them
+#   at this pin and the APK does not ship them) while the
 #   relinker stays STATIC — both at the build root (hard-asserted via file(1),
 #   readelf and ldd with LD_LIBRARY_PATH=stage-libs). The native x86-64 smoke
 #   expects ALL M3 markers (SOS_HOST_STARTED, SOS_HOST_SDL2_OK,
@@ -36,8 +38,9 @@
 #   always compiled in, no headers needed) binds the NATIVE arm64
 #   libSDL2-2.0.so.0 provided by apt libsdl2-2.0-0 via host dlopen — no guest
 #   SDL2 and no env rename tricks on glibc. The guest lib search path
-#   (BOX64_LD_LIBRARY_PATH) = artifact dir (_sos libs) + cross x86-64
-#   libstdc++/libgcc (box64 has no libstdc++ wrapper at this pin) + the
+#   (BOX64_LD_LIBRARY_PATH) = artifact dir (_sos libs) + the cross x86-64
+#   glibc from the M1 step. libstdc++/libgcc_s are STATIC in the anyhost link,
+#   so no cross-libstdc++ package/path is needed anymore.
 #   M1-proven cross glibc dir (which also serves the guest ld.so via the
 #   /lib64 symlink created in the M1 step).
 #   KB-001 matrix (hard): leg A runs the M3 flow WITHOUT the legacy
@@ -334,10 +337,13 @@ jobs:
           file build-host/relinker | grep -q "x86-64"              || BAD=1
           file build-host/relinker | grep -qi "statically linked"  || BAD=1
           if file build-host/anyhost | grep -qi "statically linked"; then BAD=1; fi
-          # M3 NEEDED set on the dynamic anyhost (contract M3 §1)
-          for lib in libSDL2-2.0.so.0 libavcodec_sos.so libavutil_sos.so libfreetype_sos.so libstdc++ libgcc_s libc; do
+          # M3 NEEDED set on the dynamic anyhost (contract M3 §1).
+          # libstdc++/libgcc_s are statically linked (box64 wraps neither, APK
+          # ships neither) — their PRESENCE as DT_NEEDED is a hard failure.
+          for lib in libSDL2-2.0.so.0 libavcodec_sos.so libavutil_sos.so libfreetype_sos.so libc; do
             echo "$NEEDS" | grep -q "NEEDED.*\[$lib\]" || BAD=1
           done
+          if echo "$NEEDS" | grep -Eq 'NEEDED.*\[lib(stdc\+\+|gcc_s)'; then BAD=1; fi
           if echo "$NEEDS" | grep -q 'NEEDED.*\[libavutil\.so\.58\]'; then BAD=1; fi
           # ldd resolution with the guest libs on LD_LIBRARY_PATH: the _sos libs
           # must resolve from stage-libs, libSDL2-2.0.so.0 from the system —
@@ -530,7 +536,7 @@ jobs:
           fi
           echo "BOX64_PATCHED=1" >> "$GITHUB_ENV"
 
-      - name: Install toolchain (cmake, ninja, amd64 cross gcc + glibc + libstdc++, libsdl2-2.0-0)
+      - name: Install toolchain (cmake, ninja, amd64 cross gcc + glibc, libsdl2-2.0-0)
         run: |
           set -e
           BOX64_SHA=$(git -C box64-src rev-parse HEAD)
@@ -547,11 +553,9 @@ jobs:
             echo "| runner | \`${RUNNER_OS} ${RUNNER_ARCH}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
           sudo apt-get update
-          # libstdc++6-amd64-cross: the M3 anyhost is a DYNAMIC C++ guest and
-          # box64 @ abfb8c3 wraps libc/libm/pthread/dl but NOT libstdc++/libgcc_s
-          # — the real x86-64 runtime libs must be reachable via BOX64_LD_LIBRARY_PATH.
           # libsdl2-2.0-0: the NATIVE arm64 SDL2 that box64's wrappedsdl2 dlopens.
-          sudo apt-get install -y cmake ninja-build gcc-x86-64-linux-gnu libc6-dev-amd64-cross libstdc++6-amd64-cross libsdl2-2.0-0 patchelf
+          # (no cross libstdc++: the M3 anyhost links libstdc++/libgcc_s statically.)
+          sudo apt-get install -y cmake ninja-build gcc-x86-64-linux-gnu libc6-dev-amd64-cross libsdl2-2.0-0 patchelf
           # HARD: the native SDL2 must be dlopen-able (box64's SDL2 wrapper binds
           # libSDL2-2.0.so.0 on the host side at runtime).
           ldconfig -p | grep -i "libSDL2-2.0.so.0" || true
@@ -740,18 +744,12 @@ jobs:
           mkdir -p ci-empty
           # Guest (x86-64) library search path for box64, in order:
           #  1) the 3 *_sos guest libs (downloaded artifact dir),
-          #  2) cross x86-64 libstdc++/libgcc_s (box64 does NOT wrap libstdc++
-          #     at this pin; anyhost is a DYNAMIC C++ guest),
-          #  3) cross x86-64 glibc (M1-proven path; also serves the guest
+          #  2) cross x86-64 glibc (M1-proven path; also serves the guest
           #     ld-linux-x86-64.so.2 via the /lib64 symlink from the M1 step).
           # libSDL2-2.0.so.0 is deliberately ABSENT here: box64's SDL2 wrapper
           # binds the NATIVE arm64 SDL2 (apt libsdl2-2.0-0) via host dlopen.
-          STDCPP_DIR="$(dpkg -L libstdc++6-amd64-cross 2>/dev/null | grep '/libstdc++\.so\.6$' | head -n1 || true)"
-          if [ -z "$STDCPP_DIR" ]; then
-            echo "::error::cross guest libstdc++.so.6 not found (package libstdc++6-amd64-cross) — the dynamic C++ anyhost cannot resolve libstdc++ under box64"
-            exit 1
-          fi
-          GUEST_LIBPATH="$PWD/host-x64:$(dirname "$STDCPP_DIR"):$BOX64_LIBPATH"
+          # libstdc++/libgcc_s are statically linked into anyhost — not needed.
+          GUEST_LIBPATH="$PWD/host-x64:$BOX64_LIBPATH"
           echo "GUEST_LIBPATH=$GUEST_LIBPATH" >> "$GITHUB_ENV"
           echo "Guest BOX64_LD_LIBRARY_PATH: $GUEST_LIBPATH"
           BOX64_LOG=INFO BOX64_LD_LIBRARY_PATH="$GUEST_LIBPATH" \
