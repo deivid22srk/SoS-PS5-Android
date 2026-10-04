@@ -17,13 +17,27 @@
  * wrapper compiled into box64 does a NATIVE host-side dlopen("libSDL2-2.0.so.0").
  * prepareM3Runtime() (shared by M2 and M3) copies the ARM64 native SDL2 dummy
  * (jniLibs libSDL2_sos_native.so) to <filesDir>/rootfs/lib/libSDL2-2.0.so.0 and
- * exports LD_LIBRARY_PATH + BOX64_LD_LIBRARY_PATH. The M3 button adds the
- * FFmpeg/freetype probe markers and requires reason=no-eboot EXACTLY
- * (contract: docs/M3-LIBS-RUNTIME.md sections 3 and 4).
+ * exports LD_LIBRARY_PATH + BOX64_LD_LIBRARY_PATH.
+ *
+ * M3 fix #1 (task 3-g, on-device failure 2026-10-05): the DYNAMIC host also
+ * needs the REAL x86-64 glibc (versioned __libc_start_main@GLIBC_2.34,
+ * locale/gettext and _chk symbols) — box64's wrapped libc does NOT provide
+ * them and the host died with SIGSEGV (exit=139) after ~27 unresolved
+ * relocations. CI leg A only passed because its BOX64_LD_LIBRARY_PATH
+ * included the cross glibc dir. The APK now ships the SAME cross glibc
+ * (assets/rootfs/libc.so.6, ld-linux-x86-64.so.2, libm.so.6 — sourced from
+ * libc6-amd64-cross of the SAME runner that builds anyhost, exact glibc
+ * version parity) and prepareM3Runtime() extracts them to
+ * <filesDir>/rootfs/lib/, which is already on BOX64_LD_LIBRARY_PATH.
+ * The M3 button adds the FFmpeg/freetype probe markers and requires
+ * reason=no-eboot EXACTLY (contract: docs/M3-LIBS-RUNTIME.md sections 3/4/7).
  *
  * All output is mirrored to logcat (tag "SOSBox64") and shown on screen (PT-BR).
  *
  * Framework-only UI (android.app.Activity, programmatic views, no androidx).
+ * Layout: ONE full-page ScrollView (title/status/buttons/verdict/log all
+ * scrollable) — the previous fixed-top + inner-scroll layout blocked touch
+ * scrolling on device (selectable TextView inside a nested ScrollView).
  */
 package br.deivid22srk.sosps5;
 
@@ -33,7 +47,6 @@ import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.LinearLayout;
@@ -43,10 +56,12 @@ import android.widget.TextView;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +90,19 @@ public class MainActivity extends Activity {
     // missing-files é exatamente este sufixo na linha do marker.
     private static final String HOST_MISSING_REASON_OK = "reason=no-eboot";
 
+    /**
+     * Glibc guest x86-64 embarcada no APK (M3 fix #1, task 3-g): o host
+     * DINÂMICO precisa dos símbolos versionados da glibc real
+     * (__libc_start_main@GLIBC_2.34, locale/gettext, _chk) que os wrappers do
+     * box64 não fornecem — sem estes arquivos o host morre com SIGSEGV no
+     * aparelho (evidência 2026-10-05). Mesma origem do CI leg A
+     * (libc6-amd64-cross do runner que constrói o anyhost) → paridade exata de
+     * versão. Extraídos para <filesDir>/rootfs/lib/ (já no BOX64_LD_LIBRARY_PATH).
+     */
+    private static final String[] GLIBC_GUEST_ASSETS = {
+            "libc.so.6", "ld-linux-x86-64.so.2", "libm.so.6"
+    };
+
     private static final int MAX_CAPTURED_LINES = 2000;
     private static final int TIMEOUT_SECONDS = 120;
 
@@ -85,7 +113,7 @@ public class MainActivity extends Activity {
     private Button hostButton;
     private Button m3Button;
     private CheckBox verboseLog;
-    private ScrollView outputScroll;
+    private ScrollView pageScroll;
 
     private String nativeLibDir;
 
@@ -141,23 +169,20 @@ public class MainActivity extends Activity {
         resultText.setText("Teste ainda não executado. Toque em um dos botões acima.");
         root.addView(resultText);
 
-        outputScroll = new ScrollView(this);
-        outputScroll.setFillViewport(true);
         outputText = new TextView(this);
         outputText.setTypeface(Typeface.MONOSPACE);
         outputText.setTextSize(12f);
-        outputText.setTextIsSelectable(true);
         outputText.setText("(a saída do box64 aparecerá aqui)");
-        outputScroll.addView(outputText);
-        LinearLayout.LayoutParams scrollParams =
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        1f);
-        outputScroll.setLayoutParams(scrollParams);
-        root.addView(outputScroll);
+        outputText.setPadding(0, dp(4), 0, dp(24));
+        root.addView(outputText);
 
-        setContentView(root);
+        // UM ScrollView de página inteira: título, status, botões, veredito e o
+        // log do box64 rolam juntos. O layout anterior (topo fixo + log num
+        // ScrollView interno com TextView selecionável) engolia os gestos de
+        // rolagem no aparelho ("não dá pra rolar", relato 2026-10-05).
+        pageScroll = new ScrollView(this);
+        pageScroll.addView(root);
+        setContentView(pageScroll);
 
         // Mirror the device diagnosis to logcat as well.
         Log.i(TAG, "=== App iniciado (M1 + M2 + M3) ===");
@@ -186,11 +211,35 @@ public class MainActivity extends Activity {
         sb.append("libSDL2_sos_native.so: ").append(hasSdl2Native ? "presente" : "AUSENTE (APK sem a SDL2 nativa M3!)").append('\n');
         sb.append("libs guest M3 (avcodec/avutil/freetype _sos): ")
                 .append(hasGuestLibs ? "presentes" : "INCOMPLETAS (APK sem as libs guest M3!)").append('\n');
+        sb.append("glibc guest x86-64 (assets/rootfs): ").append(glibcAssetStatus()).append('\n');
 
         if (Build.VERSION.SDK_INT < 33) {
             sb.append("Aviso: este app é destinado a Android 13+; continuando mesmo assim...");
         }
         return sb.toString();
+    }
+
+    /**
+     * Diagnóstico de abertura: quais dos 3 arquivos da glibc guest estão no
+     * APK (assets/rootfs). APK antigo (pré-fix #1) = "AUSENTE" → atualizar.
+     */
+    private String glibcAssetStatus() {
+        int found = 0;
+        try {
+            List<String> names = Arrays.asList(getAssets().list("rootfs"));
+            for (String asset : GLIBC_GUEST_ASSETS) {
+                if (names.contains(asset)) {
+                    found++;
+                }
+            }
+        } catch (IOException e) {
+            found = 0;
+        }
+        if (found == GLIBC_GUEST_ASSETS.length) {
+            return "presentes (libc.so.6, ld-linux-x86-64.so.2, libm.so.6)";
+        }
+        return "AUSENTES (" + found + "/" + GLIBC_GUEST_ASSETS.length
+                + " — APK antigo, atualize para o APK do M3 fix #1)";
     }
 
     /** M1 button handler — same texts and flow as task 1-b. */
@@ -320,13 +369,19 @@ public class MainActivity extends Activity {
      * 1) garante <filesDir>/rootfs/lib/;
      * 2) copia <nativeLibraryDir>/libSDL2_sos_native.so (ARM64 nativa do jniLibs)
      *    para <filesDir>/rootfs/lib/libSDL2-2.0.so.0 (REPLACE_EXISTING sempre);
-     * 3) devolve o env para o execUnderBox64:
+     * 3) extrai a glibc guest x86-64 (assets/rootfs: libc.so.6,
+     *    ld-linux-x86-64.so.2, libm.so.6 — M3 fix #1) para o MESMO diretório,
+     *    que já está no BOX64_LD_LIBRARY_PATH: sem isto o host dinâmico não
+     *    resolve os símbolos versionados da glibc e morre com SIGSEGV
+     *    (evidência de aparelho 2026-10-05 — paridade com o leg A do CI);
+     * 4) devolve o env para o execUnderBox64:
      *    LD_LIBRARY_PATH=<filesDir>/rootfs/lib (dlopen nativo do wrapper) e
      *    BOX64_LD_LIBRARY_PATH=<nativeLibraryDir>:<filesDir>/rootfs/lib (guest;
      *    as libs _sos ficam no jniLibs, sem cópia).
      *
-     * Retorna null em falha (libSDL2_sos_native.so ausente no APK ou erro de
-     * cópia) — o motivo PT-BR fica em runtimePrepFailure para a tela.
+     * Retorna null em falha (libSDL2_sos_native.so ausente no APK, assets de
+     * glibc ausentes ou erro de cópia) — o motivo PT-BR fica em
+     * runtimePrepFailure para a tela.
      */
     private String[] prepareM3Runtime() {
         runtimePrepFailure = null;
@@ -353,6 +408,31 @@ public class MainActivity extends Activity {
                     + (e.getMessage() != null ? (": " + e.getMessage()) : "");
             Log.e(TAG, runtimePrepFailure);
             return null;
+        }
+
+        // Glibc guest x86-64 (M3 fix #1, task 3-g): extrai os 3 arquivos da
+        // glibc REAL para rootfs/lib. O BOX64_LD_LIBRARY_PATH já cobre este
+        // diretório, então o loader guest do box64 passa a resolver
+        // libc.so.6/libm.so.6/ld-linux exatamente como no CI (leg A), em vez de
+        // cair nos wrappers (que não têm os símbolos versionados). Os nomes dos
+        // assets já são os nomes finais — assets não têm a restrição lib*.so do
+        // AGP, então não há renomeio aqui.
+        for (String asset : GLIBC_GUEST_ASSETS) {
+            File glibcTarget = new File(rootfsLib, asset);
+            try (InputStream in = getAssets().open("rootfs/" + asset)) {
+                Files.copy(in, glibcTarget.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                Log.i(TAG, "Runtime M3 pronto (glibc guest): " + glibcTarget.getAbsolutePath()
+                        + " (" + Files.size(glibcTarget.toPath()) + " bytes)");
+            } catch (IOException e) {
+                runtimePrepFailure = "Falha ao extrair a glibc guest '" + asset
+                        + "' (assets/rootfs) para " + glibcTarget.getAbsolutePath()
+                        + ": " + e.getClass().getSimpleName()
+                        + (e.getMessage() != null ? (": " + e.getMessage()) : "")
+                        + ". APK sem os assets de glibc — atualize para o APK do M3 fix #1 "
+                        + "(job apk do CI).";
+                Log.e(TAG, runtimePrepFailure);
+                return null;
+            }
         }
 
         return new String[]{
@@ -738,7 +818,10 @@ public class MainActivity extends Activity {
             }
             outputText.setText(out.toString());
         }
-        outputScroll.post(() -> outputScroll.fullScroll(View.FOCUS_DOWN));
+        // Página inteira rolável (fix UI 2026-10-05): volta ao topo para o
+        // veredito; o log completo fica logo abaixo e rola com o dedo — não há
+        // mais viewport aninhado para auto-scroll.
+        pageScroll.post(() -> pageScroll.scrollTo(0, 0));
     }
 
     /**

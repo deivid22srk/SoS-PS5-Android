@@ -45,3 +45,45 @@ contorno, status e quando reavaliar.
   rodar automaticamente e mede o delta antes de re-adotar.
 - **Status:** FECHADO para o cenário M3 (reabrir via matriz KB-001 se crash
   dynarec reaparecer).
+
+---
+
+## KB-002 — Host M3 dinâmico morre com SIGSEGV no aparelho: glibc x86-64 real ausente no device (M3)
+
+- **Sintoma (2026-10-05, motorola edge 30 fusion / Android 14; logcat integral
+  em `docs/evidence/m3-device-logcat-2026-10-05-falha1.txt`):** botão M3
+  falha com `FALHA (M3): resultado inesperado, exit=139` (SIGSEGV). O logcat
+  mostra ~27 relocações não resolvidas antes do crash — `__libc_start_main`
+  (GLOB_DAT; `Warning, function my___libc_start_main not found` 2×),
+  `__errno_location`, família locale (`__wcsftime_l`, `__towlower_l`,
+  `__wcscoll_l`, `__mbsnrtowcs_chk`, `__iswctype_l`, `__strtod_l`,
+  `__wcsxfrm_l`, `__freelocale`, `__uselocale`, `__strcoll_l`, `__strtof_l`,
+  `__strftime_l`, `__wmemcpy_chk`, `__strxfrm_l`, `__nl_langinfo_l`,
+  `__mbsrtowcs_chk`, `__wmemset_chk`, `__wctype_l`, `__newlocale`,
+  `__towupper_l`, `__duplocale`), gettext (`gettext`, `dgettext`,
+  `bindtextdomain`, `bind_textdomain_codeset`) — cada uma com exigência de
+  versão (`optver=N / GLIBC_2.x`) — seguidas de `Unhandled signal caught`.
+  SDL2 nativa OK antes disso (`avc: granted { execute }` sobre a
+  `rootfs/lib/libSDL2-2.0.so.0`).
+- **Causa raiz:** o anyhost do M3 é **DINÂMICO** e exige a glibc x86-64 REAL
+  (símbolos versionados — ex. `__libc_start_main@GLIBC_2.34` — que os wrappers
+  internos do box64 @abfb8c3 não fornecem com a versão pedida). O CI
+  (`box64-arm64`, leg A) só passou porque o `BOX64_LD_LIBRARY_PATH` incluía o
+  diretório da glibc cross (`libc6-amd64-cross`) — **o device não tinha nada
+  equivalente**. No M2 o problema não aparecia porque o binário era ESTÁTICO
+  (sem relocações dinâmicas). Premissa do contrato M3 §1 ("glibc não vai no
+  pacote") refutada por esta evidência; contrato emendado (§7).
+- **Contorno (APLICADO — task 3-g, "M3 fix #1"):** o APK embarca a MESMA glibc
+  cross do CI — `assets/rootfs/{libc.so.6, ld-linux-x86-64.so.2, libm.so.6}`,
+  copiados do `libc6-amd64-cross` do MESMO runner que constrói o anyhost
+  (paridade exata de versão com a glibc do link). O app extrai para
+  `<filesDir>/rootfs/lib/` (já no `BOX64_LD_LIBRARY_PATH`); `libm.so.6` é
+  DT_NEEDED de `libavutil_sos.so`. Assert HARD novo no job apk:
+  `M3_GLIBC_ASSETS_OK` (ELF x86-64 dinâmico + `__libc_start_main@GLIBC_2.34+`
+  via `readelf -W`).
+- **Status:** correção enviada (aguarda CI verde + reteste no aparelho). Se o
+  SIGSEGV persistir com a glibc presente, reabrir com logcat completo —
+  próximo candidato documentado no contrato §7.4: dependência do ld.so real
+  via PT_INTERP `/lib64/...` (hoje provado não-fatal pelo próprio log do
+  crash); correção planejada: `patchelf --set-interpreter` p/ o caminho do
+  filesDir.

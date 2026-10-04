@@ -1212,6 +1212,67 @@ jobs:
           done
           ls -la app/src/main/jniLibs/arm64-v8a
 
+      # M3 fix #1 (task 3-g, on-device failure 2026-10-05): the DYNAMIC anyhost
+      # needs the REAL x86-64 glibc (versioned __libc_start_main@GLIBC_2.34,
+      # locale/gettext, _chk family). box64's wrapped libc does NOT provide
+      # them; CI leg A only passed because its BOX64_LD_LIBRARY_PATH included
+      # the cross glibc dir — on device the host died with SIGSEGV (exit=139)
+      # after ~27 unresolved relocations. Fix: ship the SAME cross glibc this
+      # ecosystem builds against (libc6-amd64-cross of THIS runner — exact
+      # version parity with the glibc anyhost was linked against) as
+      # assets/rootfs/{libc.so.6,ld-linux-x86-64.so.2,libm.so.6}; the app
+      # extracts them to <filesDir>/rootfs/lib/, which is ALREADY on
+      # BOX64_LD_LIBRARY_PATH. libm.so.6 is needed by libavutil_sos.so
+      # (DT_NEEDED); assets have no lib*.so name restriction (no renames).
+      - name: Stage guest glibc x86-64 into assets/rootfs (device parity with CI leg A)
+        run: |
+          set -e
+          LIBC=$(dpkg -L libc6-amd64-cross | grep '/libc\.so\.6$' | head -n1)
+          LDSO=$(dpkg -L libc6-amd64-cross | grep '/ld-linux-x86-64\.so\.2$' | head -n1)
+          LIBM=$(dpkg -L libc6-amd64-cross | grep '/libm\.so\.6$' | head -n1)
+          for v in "$LIBC" "$LDSO" "$LIBM"; do
+            if [ -z "$v" ] || [ ! -f "$v" ]; then
+              echo "::error::cross glibc file not found in libc6-amd64-cross (libc=$LIBC ldso=$LDSO libm=$LIBM)"
+              dpkg -L libc6-amd64-cross | head -n 40
+              exit 1
+            fi
+          done
+          mkdir -p app/src/main/assets/rootfs
+          cp -fL "$LIBC" app/src/main/assets/rootfs/libc.so.6
+          cp -fL "$LDSO" app/src/main/assets/rootfs/ld-linux-x86-64.so.2
+          cp -fL "$LIBM" app/src/main/assets/rootfs/libm.so.6
+          ls -la app/src/main/assets/rootfs
+          # HARD evidence: every staged file is a DYNAMIC x86-64 ELF shared object.
+          BAD=""
+          for f in libc.so.6 ld-linux-x86-64.so.2 libm.so.6; do
+            P="app/src/main/assets/rootfs/$f"
+            file "$P" | grep -q "x86-64" || BAD="$BAD arch:$f"
+            if file "$P" | grep -qi "statically linked"; then BAD="$BAD static:$f"; fi
+            test -s "$P" || BAD="$BAD empty:$f"
+          done
+          # libc.so.6 must provide __libc_start_main@GLIBC_2.34+ — the exact
+          # versioned lookup that failed on device against the wrapped libc.
+          if ! readelf -W --dyn-syms app/src/main/assets/rootfs/libc.so.6 | grep -q "__libc_start_main@@\?GLIBC_2\.3[4-9]"; then
+            BAD="$BAD ver:__libc_start_main@GLIBC_2.34+"
+          fi
+          if [ -n "$BAD" ]; then
+            echo "::error::glibc assets evidence assertion FAILED:$BAD"
+            for f in libc.so.6 ld-linux-x86-64.so.2 libm.so.6; do
+              file "app/src/main/assets/rootfs/$f" || true
+            done
+            exit 1
+          fi
+          {
+            echo ""
+            echo "### Guest glibc x86-64 → assets/rootfs (device parity with CI leg A)"
+            echo '```'
+            ls -la app/src/main/assets/rootfs
+            for f in libc.so.6 ld-linux-x86-64.so.2 libm.so.6; do file "app/src/main/assets/rootfs/$f"; done
+            readelf -W --dyn-syms app/src/main/assets/rootfs/libc.so.6 | grep "__libc_start_main" | head -n 3
+            echo '```'
+            echo ""
+            echo "**M3_GLIBC_ASSETS_OK** — libc.so.6 + ld-linux-x86-64.so.2 + libm.so.6 (x86-64, dynamic; __libc_start_main@GLIBC_2.34+ presente)"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Evidence — jniLibs contents (M3 — hard assert)
         run: |
           set -e

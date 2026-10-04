@@ -1,0 +1,68 @@
+SDK: 34
+PRODUCT_NAME: tundra_g
+DEVICE_NAME: tundra
+BOARD_NAME: tundra
+SUPPORTED_ABIS: arm64-v8a, armeabi-v7a, armeabi
+MANUFACTURER: motorola
+BRAND: motorola
+MODEL: motorola edge 30 fusion
+
+1791152913.213 10410 18010 18010 D VRI[MainActivity]: update {(0,0)(fillxfill) sim={adjust=pan forwardNavigation} ty=BASE_APPLICATION wanim=0x10302fe
+1791152913.213 10410 18010 18010 D VRI[MainActivity]:   fl=LAYOUT_IN_SCREEN LAYOUT_INSET_DECOR SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+1791152913.213 10410 18010 18010 D VRI[MainActivity]:   pfl=NO_MOVE_ANIMATION FORCE_DRAW_STATUS_BAR_BACKGROUND USE_BLAST FIT_INSETS_CONTROLLED
+1791152913.213 10410 18010 18010 D VRI[MainActivity]:   bhv=DEFAULT
+1791152913.213 10410 18010 18010 D VRI[MainActivity]:   fitSides=} by setLayoutParams
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: QUALCOMM build                   : eaa701cd06, I183f6321f0
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: Build Date                       : 10/27/22
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: OpenGL ES Shader Compiler Version: EV031.35.01.12
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: Local Branch                     :
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: Remote Branch                    :
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: Remote Branch                    :
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: Reconstruct Branch               :
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: Build Config                     : S P 10.0.7 AArch64
+1791152913.248 10410 18010 18052 I AdrenoGLES-0: Driver Path                      : /vendor/lib64/egl/libGLESv2_adreno.so
+1791152913.256 10410 18010 18052 I AdrenoGLES-0: PFP: 0x016dc094, ME: 0x00000000
+1791152913.275 10410 18010 18052 I OpenGLRenderer: setGrContext nullptr-->validptr
+1791152913.275 10410 18010 18052 E OpenGLRenderer: Unable to match the desired swap behavior.
+1791152914.429 10410 18010 19188 I SOSBox64: Runtime M3 pronto: /data/user/0/br.deivid22srk.sosps5/files/rootfs/lib/libSDL2-2.0.so.0 (3762832 bytes)
+1791152914.430 10410 18010 19188 I SOSBox64: Executando: /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libbox64.so /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so --game-dir /data/user/0/br.deivid22srk.sosps5/files/game (BOX64_LOG=DEBUG)
+1791152914.434 10410 19189 19189 W libbox64.so: type=1400 audit(0.0:176061): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c154,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791152914.434 10410 19189 19189 W libbox64.so: type=1400 audit(0.0:176062): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c154,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791152914.434 10410 19189 19189 W libbox64.so: type=1400 audit(0.0:176063): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c154,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791152914.434 10410 19189 19189 W libbox64.so: type=1400 audit(0.0:176064): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c154,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791152914.495 10410 18010 19188 I SOSBox64: sh: lscpu: inaccessible or not found
+1791152914.530 10410 19189 19189 W libanyhost64.so: type=1400 audit(0.0:176065): avc:  granted  { execute } for  path="/data/user/0/br.deivid22srk.sosps5/files/rootfs/lib/libSDL2-2.0.so.0" dev="dm-49" ino=205988 scontext=u:r:untrusted_app_27:s0:c154,c257,c512,c768 tcontext=u:object_r:app_data_file:s0:c154,c257,c512,c768 tclass=file app=br.deivid22srk.sosps5
+1791152914.653 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Warning, function my___libc_start_main not found
+1791152914.653 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Warning, function my___libc_start_main not found
+1791152914.653 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Global Symbol __libc_start_main not found, cannot apply R_X86_64_GLOB_DAT @0x100126be0 (0x0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so
+1791152914.653 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __errno_location not found, cannot apply R_X86_64_JUMP_SLOT @0x1001264f8 (0x14050) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.654 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wcsftime_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126520 (0x140a0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=3 / GLIBC_2.3)
+1791152914.654 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __towlower_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126530 (0x140c0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.655 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol gettext not found, cannot apply R_X86_64_JUMP_SLOT @0x100126550 (0x14100) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.655 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wcscoll_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126568 (0x14130) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.655 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __mbsnrtowcs_chk not found, cannot apply R_X86_64_JUMP_SLOT @0x100126588 (0x14170) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=6 / GLIBC_2.4)
+1791152914.656 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __iswctype_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001265a0 (0x141a0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.656 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strtod_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001265a8 (0x141b0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.657 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wcsxfrm_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001265f0 (0x14240) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.657 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __freelocale not found, cannot apply R_X86_64_JUMP_SLOT @0x100126610 (0x14280) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.657 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol bind_textdomain_codeset not found, cannot apply R_X86_64_JUMP_SLOT @0x100126620 (0x142a0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.658 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __uselocale not found, cannot apply R_X86_64_JUMP_SLOT @0x100126648 (0x142f0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=3 / GLIBC_2.3)
+1791152914.658 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol dgettext not found, cannot apply R_X86_64_JUMP_SLOT @0x100126698 (0x14390) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.658 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strcoll_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001266d0 (0x14400) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.659 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strtof_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001266f0 (0x14440) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.659 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strftime_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126700 (0x14460) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=3 / GLIBC_2.3)
+1791152914.660 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wmemcpy_chk not found, cannot apply R_X86_64_JUMP_SLOT @0x100126718 (0x14490) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=6 / GLIBC_2.4)
+1791152914.660 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strxfrm_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126798 (0x14590) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.660 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol bindtextdomain not found, cannot apply R_X86_64_JUMP_SLOT @0x1001267c8 (0x145f0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.661 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __nl_langinfo_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001267f0 (0x14640) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.661 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __mbsrtowcs_chk not found, cannot apply R_X86_64_JUMP_SLOT @0x100126858 (0x14710) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=6 / GLIBC_2.4)
+1791152914.662 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wmemset_chk not found, cannot apply R_X86_64_JUMP_SLOT @0x100126880 (0x14760) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=6 / GLIBC_2.4)
+1791152914.662 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wctype_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126888 (0x14770) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.663 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __newlocale not found, cannot apply R_X86_64_JUMP_SLOT @0x1001268f8 (0x14850) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.663 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __towupper_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126928 (0x148b0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.663 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Error: Symbol __duplocale not found, cannot apply R_X86_64_JUMP_SLOT @0x1001269c0 (0x149e0) in /data/app/~~RFBpkZH1ExMKGYXbspIAiw==/br.deivid22srk.sosps5-dqBFOiVQ7ZSUxQBCZVL07A==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791152914.697 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] 19189|Warning, calling Signal 11 function handler SIG_DFL
+1791152914.697 10410 18010 19188 I SOSBox64: [[31mBOX64[0m] Unhandled signal caught, dying with the signal
+1791152914.808 10410 18010 18010 E SOSBox64: FALHA (M3): resultado inesperado, exit=139
+1791152917.740 10410 18010 18052 D Surface : Surface::disconnect
+1791152917.740 10410 18010 18052 D BufferQueueProducer: [VRI[MainActivity]#2(BLAST Consumer)2](id:465a00000002,api:1,p:18010,c:18010) disconnect: api 1

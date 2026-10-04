@@ -11,13 +11,17 @@ em 2026-10-05; aceitação final = critérios abaixo verdes em CI + aparelho).
   `libSDL2-2.0.so.0`), `libpayload64.so` (regressão M1), libs guest x86-64
   `libavcodec_sos.so` / `libavutil_sos.so` / `libfreetype_sos.so` e
   `libSDL2_sos_native.so` (SDL2 nativa ARM64 dummy/offscreen, submodule pinado).
-- **Rootfs mínima: 1 arquivo copiado em runtime** (correção da estimativa inicial
-  "zero"): `libSDL2_sos_native.so` (ARM64 nativa, dummy/offscreen, construída do
+- **Rootfs mínima: 4 arquivos copiados em runtime** (atualizado pelo M3 fix #1,
+  2026-10-05 — ver §7; estimativa inicial "1 arquivo" superada):
+  `libSDL2_sos_native.so` (ARM64 nativa, dummy/offscreen, construída do
   submodule 3rdparty/SDL2 pinado) → copiado pelo app para
-  `<filesDir>/rootfs/lib/libSDL2-2.0.so.0`. Motivo: AGP só empacota `lib*.so`
-  (não `*.so.0`) e o wrapper do box64 faz `dlopen("libSDL2-2.0.so.0")` NATIVO —
-  o linker bionic precisa do nome exato via `LD_LIBRARY_PATH` (o logcat do
-  aparelho confirma `permitted_path=/data/...:/data/user/0/<pkg>`).
+  `<filesDir>/rootfs/lib/libSDL2-2.0.so.0`, MAIS a glibc guest x86-64
+  (`libc.so.6`, `ld-linux-x86-64.so.2`, `libm.so.6`) extraída de
+  `assets/rootfs` para o MESMO diretório. Motivo (SDL2): AGP só empacota
+  `lib*.so` (não `*.so.0`) e o wrapper do box64 faz `dlopen("libSDL2-2.0.so.0")`
+  NATIVO — o linker bionic precisa do nome exato via `LD_LIBRARY_PATH` (o
+  logcat do aparelho confirma `permitted_path=/data/...:/data/user/0/<pkg>`).
+  Motivo (glibc): §7.
 - **SDL2 nativa (ARM64) no CI do APK**: options reais do CMake da SDL 2.33 —
   `SDL_X11/SDL_WAYLAND/SDL_KMSDRM/SDL_OPENGL/SDL_OPENGLES/SDL_VULKAN/
   SDL_HIDAPI/SDL_SENSOR/SDL_AUDIO/SDL_RENDER/SDL_TEST/SDL_TESTS/SDL_POWER/
@@ -29,8 +33,11 @@ em 2026-10-05; aceitação final = critérios abaixo verdes em CI + aparelho).
 - **Env do processo filho (app)**: `LD_LIBRARY_PATH=<filesDir>/rootfs/lib`
   (nativo bionic) + `BOX64_LD_LIBRARY_PATH=<nativeLibraryDir>:<filesDir>/rootfs/lib`
   (guest). Guest libs com SONAME controlado (`_sos`) não precisam de cópia.
-- **glibc não vai no pacote**: box64 resolve libc/libm/pthread/dl via wrappers
-  internos (M1 dinâmico já provado). FFmpeg/freetype configurados mínimos.
+- **~~glibc não vai no pacote~~ — SUPERADO pelo §7 (M3 fix #1, 2026-10-05):** a
+  premissa "box64 resolve libc/libm/pthread/dl via wrappers internos" valia para
+  o M1/M2 (binário ESTÁTICO) e refutada para o M3 (host DINÂMICO exige glibc
+  real versionada — SIGSEGV no aparelho, KB-002). FFmpeg/freetype configurados
+  mínimos.
 - **SDL2 nunca como lib guest** (preferência do usuário): wrapper nativo. Fallback
   documentado (só se wrapper inviável no NDK): SDL2 guest x86-64 dinâmica —
   exigiria parar e perguntar antes.
@@ -44,6 +51,7 @@ em 2026-10-05; aceitação final = critérios abaixo verdes em CI + aparelho).
 | freetype (guest x86-64) | submodule `3rdparty/freetype` @ `42608f7` | `FT_DISABLE_ZLIB/BZIP2/PNG/HARFBUZZ/BROTLI=ON` (idêntico ao root CMake do upstream) | compartilhada → `libfreetype_sos.so` |
 | SDL2 de link do host (CI x86-64) | `apt libsdl2-dev` (Ubuntu) | padrão da distro | só p/ link; runtime no aparelho é a nativa acima |
 | libstdc++/libgcc_s | **linkadas ESTÁTICAS no anyhost** (`-static-libstdc++ -static-libgcc`) | box64 @abfb8c3 não embriona nenhuma das duas e o APK não as empacota; DT_NEEDED delas no anyhost = FALHA HARD no CI | — |
+| glibc guest x86-64 | `libc6-amd64-cross` do runner (MESMO pacote/diretório do leg A do CI, `dpkg -L`) | n/a (binários da distro; SEM recompilação) | `assets/rootfs/` (libc.so.6 + ld-linux-x86-64.so.2 + libm.so.6) → extraídos pelo app p/ `<filesDir>/rootfs/lib` (§7) |
 
 ## 3. Extensão do anyhost (harness M3)
 
@@ -108,3 +116,35 @@ Resolve o achado F7 da revisão M2-e:
    APK; botão M3 no app com veredito verde exigindo os 5 markers + exit 1.
 4. Teste on-device (motorola edge 30 fusion, Android 14): botão M3 verde no app,
    logcat com markers e sem Fatal signal.
+
+## 7. M3 fix #1 — glibc guest x86-64 embarcada no APK (2026-10-05)
+
+A premissa original do §1 ("glibc não vai no pacote") foi **refutada pelo 1º
+teste de aparelho** (motorola edge 30 fusion, Android 14, 2026-10-05): o host
+M3 dinâmico morreu com SIGSEGV (exit=139) após ~27 relocações não resolvidas
+(`__libc_start_main@GLIBC_2.34`, família locale/newlocale, gettext, `_chk`) —
+os wrappers do box64 @abfb8c3 não fornecem esses símbolos versionados, e o CI
+só havia passado porque a leg A punha a glibc cross do runner no
+`BOX64_LD_LIBRARY_PATH`. Diagnóstico completo: KB-002 (KNOWN_BUGS.md).
+
+Decisão (paridade exata com a leg A do CI, sem recompilar nada):
+
+1. O APK embarca `assets/rootfs/{libc.so.6, ld-linux-x86-64.so.2, libm.so.6}`
+   copiados do `libc6-amd64-cross` DO MESMO runner que constrói o anyhost
+   (versão exata da glibc do link). Assets não têm a restrição `lib*.so` do
+   AGP → sem renomeios; o app extrai para `<filesDir>/rootfs/lib/`, que JÁ
+   está no `BOX64_LD_LIBRARY_PATH` — o loader guest do box64 passa a resolver
+   libc/libm/ld-linux exatamente como na leg A. `libm.so.6` é DT_NEEDED de
+   `libavutil_sos.so` (verificado no APK).
+2. Assert HARD novo no job apk (`M3_GLIBC_ASSETS_OK`): os 3 arquivos são ELF
+   x86-64 dinâmicos não-vazios e `libc.so.6` exporta `__libc_start_main@`
+   `GLIBC_2.34+` (`readelf -W` — a busca exata que falhou no device).
+3. A rootfs mínima passa a **4 arquivos** (SDL2 nativa + 3 glibc); libstdc++/
+   libgcc_s continuam ESTÁTICAS no anyhost (nada muda); SDL2 segue NUNCA como
+   lib guest (wrapper nativa).
+4. O PT_INTERP `/lib64/ld-linux-x86-64.so.2` do anyhost segue apontando para o
+   caminho padrão (não existe no device): o log do crash prova que o box64
+   segue sem ele (não-fatal); o ld-linux embarcado cobre o DT_NEEDED
+   homônimo via rootfs. Se o reteste mostrar dependência do ld.so real, o
+   próximo passo documentado é `patchelf --set-interpreter` com o caminho do
+   filesDir (decisão futura, fora do escopo do fix #1).

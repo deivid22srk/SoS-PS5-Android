@@ -250,20 +250,28 @@ loader: o host (`anyhost`, agora x86-64 **dinâmico**) carrega a SDL2 via
 liberias guest x86-64 `libavcodec_sos.so`/`libavutil_sos.so`/
 `libfreetype_sos.so` são resolvidas pelo box64 via `BOX64_LD_LIBRARY_PATH`
 apontando para o `nativeLibraryDir` do app. O app também monta a "rootfs
-mínima" (1 arquivo): copia `libSDL2_sos_native.so` para
+mínima" (4 arquivos desde o M3 fix #1): copia `libSDL2_sos_native.so` para
 `<filesDir>/rootfs/lib/libSDL2-2.0.so.0` — é por esse nome que a SDL2 nativa é
-dlopen-ed pelo wrapper.
+dlopen-ed pelo wrapper — e extrai a **glibc guest x86-64**
+(`libc.so.6`, `ld-linux-x86-64.so.2`, `libm.so.6`) de `assets/rootfs` para o
+MESMO diretório, já no `BOX64_LD_LIBRARY_PATH` (contrato M3 §7 — sem a glibc
+real o host dinâmico morre com SIGSEGV, KB-002).
 
 ### 8.1 Pré-requisitos
 
-- APK do CI com M3 — run
-  [37239106249](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37239106249)
-  → artifact `SoS-PS5-Android-PoC-debug.apk` (23,9 MB; **7 jniLibs**:
-  libbox64, libpayload64, libanyhost64, libavcodec_sos, libavutil_sos,
-  libfreetype_sos, libSDL2_sos_native). Instala por cima dos anteriores.
-- No diagnóstico de abertura, o quadro de libs agora lista as 7 — todas
-  `presente`. Se `libSDL2_sos_native.so` ou alguma `*_sos.so` aparecer
-  `AUSENTE`, o APK é antigo.
+- **APK do M3 fix #1 (versionCode 2 / versionName 0.2.0-poc-m3)** — contém a
+  glibc guest x86-64 (KB-002). O APK do run 37239106249 (versionCode 1) está
+  SUPERADO: nele o M3 falha com exit=139 (SIGSEGV por glibc ausente). Use o
+  artifact `SoS-PS5-Android-PoC-debug.apk` do run do fix #1 (link no
+  PROGRESS.md). O aparelho aceita instalar por cima (versionCode cresceu).
+- Como conferir se o APK novo está instalado: no quadro de diagnóstico de
+  abertura, além das **7 jniLibs** `presente`, a linha
+  `glibc guest x86-64 (assets/rootfs):` deve mostrar
+  `presentes (libc.so.6, ld-linux-x86-64.so.2, libm.so.6)`. Se aparecer
+  `AUSENTES (0/3 ...)`, o APK é o antigo.
+- A interface agora rola por inteiro (ScrollView de página inteira — relato
+  "não dá pra rolar" de 2026-10-05 corrigido): título, status, botões,
+  veredito e log rolam juntos.
 
 ### 8.2 Passo a passo
 
@@ -316,6 +324,8 @@ adb logcat -s SOSBox64:V > sosbox64-m3.log
 | `SOS_HOST_M3_FAIL lib=ffmpeg reason=...` | decoder não registrou / `avcodec_open2` falhou sob box64 | mande o logcat completo + BOX64_LOG=DEBUG |
 | `SOS_HOST_M3_FAIL lib=freetype reason=...` | `FT_Init_FreeType` falhou | idem |
 | `FALHA — libSDL2_sos_native.so ausente no APK` | APK sem a SDL2 nativa (build apk antigo) | baixe o artifact do run correto |
+| `FALHA — Falha ao extrair a glibc guest ... (assets/rootfs)` | APK sem os assets de glibc (build apk antigo, pré-fix #1) | baixe o APK do run do fix #1 (versionCode 2) |
+| exit 139 com `Symbol ... not found` (locale/gettext/`_chk`/`__libc_start_main`) no logcat | glibc guest ausente no `BOX64_LD_LIBRARY_PATH` (KB-002) — APK pré-fix #1 ou extração falhou | confira a linha `glibc guest x86-64` no diagnóstico de abertura; mande o logcat se `presentes` e ainda assim falhar |
 | exit 139 / Fatal signal no logcat | SIGSEGV sob dynarec (KB-001 reaparecido) | mande o logcat; a matriz KB-001 volta ao CI |
 | `SOS_HOST_INTERNAL_ERROR reason=m3-probe-failed` | qualquer sonda falhou (exit 2) | cole a saída integral |
 | exit ≠ 1 sem markers de sonda | loader não resolveu alguma lib guest | logcat + conferir as 7 libs no diagnóstico de abertura |
@@ -323,8 +333,11 @@ adb logcat -s SOSBox64:V > sosbox64-m3.log
 Ruído conhecido (não fatais): mesmas linhas `avc: denied ...` e `sh: lscpu`
 das seções 6/7. Nenhum patch seccomp novo foi necessário no M3.
 
-> **APK de referência do M3 (CI verde):** run
-> [37239106249](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37239106249)
-> (sha deba957, 2026-10-05) — no CI ARM64 o host M3 passou sob box64 **sem**
+> **APK de referência:** use sempre o do run mais recente listado no
+> PROGRESS.md. O run [37239106249](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37239106249)
+> (sha deba957, 2026-10-05) foi o CI verde dos critérios 1-3, mas o SEU APK
+> (versionCode 1) está superado pelo M3 fix #1: no aparelho ele falha com
+> exit=139 por falta da glibc guest (KB-002) — use o APK do run do fix #1
+> (versionCode 2 / 0.2.0-poc-m3). No CI ARM64 o host M3 passou **sem**
 > `BOX64_DYNAREC_SAFEFLAGS` (KB-001 reavaliado e fechado: wrapper nativo
 > eliminou o gatilho).
