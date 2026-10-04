@@ -504,3 +504,21 @@ correções documentais/higiene aplicadas e re-validadas).
 
 1. CI verde (critérios 1 e 2) — aguardando push.
 2. Teste no aparelho do usuário com o APK (critério 3) — `docs/ON_DEVICE_TEST.md` §7.
+
+### Fix CI #1 do M2 (2026-10-05) — run 37226437742 (host-linux FALHOU)
+
+- Causa raiz (log do job): `build-host/relinker: No such file or directory` — o alvo
+  `relinker` linkava em `build-host/core/relinker-build/relinker` (binary dir do
+  add_subdirectory), não no root do build; a evidência `file(1)` (que exige
+  `statically linked` nos DOIS binários) falhou ⇒ `HOST_NOT_STATIC` (path, não
+  linkage — o `anyhost` estava OK e estático).
+- Fix: `host/CMakeLists.txt` do patch 0002 agora faz
+  `set_target_properties(relinker PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")`
+  — relinker passa a sair em `build-host/relinker`, ao lado do `anyhost`
+  (todos os consumidores do workflow ficam válidos sem alteração).
+- Validação local: build limpo (ninja 312/312, rc=0) com ambos os binários no
+  root do build, `statically linked x86-64`; smokes reproduzidos (anyhost exit=1
+  + 3 markers; relinker usage exit=1). Patch regenerado e re-provado em worktree
+  limpo do SHA pinado.
+- Box64/arm64 e apk skipados nesse run (gating `needs` intencional). Novo run
+  após push do fix.

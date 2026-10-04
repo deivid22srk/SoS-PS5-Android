@@ -1,4 +1,4 @@
-From d154358ef5d54b449ffa5c89b0a392fa3a5ac84e Mon Sep 17 00:00:00 2001
+From 470e3aba21b3fb891eb005c8965f82ba55dfd5ff Mon Sep 17 00:00:00 2001
 From: SoS Port Bot <bot@localhost>
 Date: Sun, 4 Oct 2026 18:38:18 +0000
 Subject: [PATCH] =?UTF-8?q?Add=20Linux=20host=20(anyhost)=20with=20minimal?=
@@ -32,18 +32,18 @@ Evidence: both binaries build as 'ELF 64-bit LSB executable, x86-64,
 statically linked' (gcc 14.2, CMake 4.4.4, Ninja); smokes exercise all
 missing-file reasons plus relinker usage exit.
 ---
- host/CMakeLists.txt |  62 ++++++++
+ host/CMakeLists.txt |  68 +++++++++
  host/anyhost.cpp    | 347 ++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 409 insertions(+)
+ 2 files changed, 415 insertions(+)
  create mode 100644 host/CMakeLists.txt
  create mode 100644 host/anyhost.cpp
 
 diff --git a/host/CMakeLists.txt b/host/CMakeLists.txt
 new file mode 100644
-index 0000000..c123dfa
+index 0000000..63ba464
 --- /dev/null
 +++ b/host/CMakeLists.txt
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,68 @@
 +# host/CMakeLists.txt — superprojeto standalone do host Linux (anyhost), M2.
 +#
 +# Constrói, SEM tocar no CMakeLists.txt raiz do upstream:
@@ -102,6 +102,12 @@ index 0000000..c123dfa
 +set(CMAKE_EXE_LINKER_FLAGS "${ANYPS5_EXE_LINKER_FLAGS}")
 +add_subdirectory("${ANYPS5_ROOT}/core/relinker" core/relinker-build)
 +set(CMAKE_EXE_LINKER_FLAGS "${RELINKER_SAVED_EXE_LINKER_FLAGS}")
++
++# Coloca o relinker no root do build (build-host/relinker): os consumidores
++# (evidência file(1), smokes, artifact host-linux-x64) esperam os dois binários
++# lado a lado com o anyhost. Sem isso ele cairia em core/relinker-build/relinker.
++set_target_properties(relinker PROPERTIES
++        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 +
 +add_executable(anyhost anyhost.cpp)
 +target_link_libraries(anyhost PRIVATE SDL2-static)
