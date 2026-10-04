@@ -19,10 +19,13 @@ em 2026-10-05; aceitação final = critérios abaixo verdes em CI + aparelho).
   o linker bionic precisa do nome exato via `LD_LIBRARY_PATH` (o logcat do
   aparelho confirma `permitted_path=/data/...:/data/user/0/<pkg>`).
 - **SDL2 nativa (ARM64) no CI do APK**: options reais do CMake da SDL 2.33 —
-  `SDL_X11/SDL_WAYLAND/SDL_KMSDRM/SDL_OPENGL/SDL_OPENGLES/SDL_VULKAN/SDL_HAPTIC/
+  `SDL_X11/SDL_WAYLAND/SDL_KMSDRM/SDL_OPENGL/SDL_OPENGLES/SDL_VULKAN/
   SDL_HIDAPI/SDL_SENSOR/SDL_AUDIO/SDL_RENDER/SDL_TEST/SDL_TESTS/SDL_POWER/
   SDL_LIBUDEV=OFF`, `SDL_JOYSTICK=ON`, `SDL_SHARED=ON/SDL_STATIC=OFF`
-  (nomes `SDL_*`, não `VIDEO_*`).
+  (nomes `SDL_*`, não `VIDEO_*`). **`SDL_HAPTIC=ON` obrigatório**: os stubs JNI
+  de haptic em `src/core/android/SDL_android.c` são incondicionais nessa revisão
+  e chamam `Android_AddHaptic`/`Android_RemoveHaptic`, que só existem com o
+  subsistema haptic habilitado — `SDL_HAPTIC=OFF` NÃO compila no Android.
 - **Env do processo filho (app)**: `LD_LIBRARY_PATH=<filesDir>/rootfs/lib`
   (nativo bionic) + `BOX64_LD_LIBRARY_PATH=<nativeLibraryDir>:<filesDir>/rootfs/lib`
   (guest). Guest libs com SONAME controlado (`_sos`) não precisam de cópia.
