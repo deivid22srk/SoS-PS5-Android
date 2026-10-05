@@ -678,3 +678,43 @@ correções documentais/higiene aplicadas e re-validadas).
   (25,6 MB; 7 jniLibs + 3 assets de glibc conferidos por zip listing).
 - Pendente para fechar o M3: critério 4 — reteste on-device com este APK
   (ON_DEVICE_TEST.md §8).
+
+## M3 — Fix #2 on-device (2026-10-05, task 3-g): shims bionic no box64 + --export-dynamic
+
+- **Falha #2 no aparelho** (mesmo device; logcat em
+  `docs/evidence/m3-device-logcat-2026-10-05-falha2.txt`): o APK do fix #1
+  (run 37242064025) reproduz o MESMO crash exit=139 com os MESMOS 27 símbolos
+  — com a glibc guest presente e extraída (`Runtime M3 pronto (glibc guest)`
+  × 3 no log). O diagnóstico do fix #1 estava ERRADO.
+- **Causa raiz real (KB-002 revisado; contrato §7.1):** dois mecanismos
+  independentes no box64 @abfb8c3 + toolchain Android:
+  1. libc/libm/ld-linux são "essential WRAPPED" → wrapper instanciado com
+     `dlopen(NULL)` e **nunca** carrega os arquivos reais do
+     `BOX64_LD_LIBRARY_PATH` (glibc guest = inerte); GO resolve via
+     `dlsym(dlopen(NULL), nome)` → no CI glibc o escopo global tem tudo, no
+     bionic nenhum dos 27 existe;
+  2. GOM `__libc_start_main` precisa de `my___libc_start_main` exportado, mas
+     (a) `entrypoint.c` só o compila em hosts não-Android (`#ifdef ANDROID`
+     compila `my___libc_init`) e (b) CMake `ENABLE_EXPORTS` é no-op no
+     toolchain Android → provado no APK do run 19: 0 ocorrências de
+     `my___libc_start_main` em 2.662 dynsyms.
+- **Auditoria de cobertura** (`scripts/audit-symbols.py`, novo no repo):
+  todos os UND dos 4 ELFs guest do APK × (bionic ∪ exports box64 ∪ GOM ∪
+  libs guest). Gaps = exatamente os 27 do device + `__xpg_strerror_r`
+  (libavutil_sos, GO registrado, falha LAZY) — zero outros gaps.
+- **Correção:**
+  1. `patches/0004-android-glibc-shims.patch` — 27 shims ANDROID-only em
+     `wrappedlibc.c` (locale C-only/gettext identidade/_chk sem-check/
+     `__errno_location`→`&errno`/`__xpg_strerror_r`) + `entrypoint.c` com
+     `my___libc_start_main`/`my32___libc_start_main` incondicionais;
+  2. `scripts/ci-build-box64.sh` — `-DCMAKE_EXE_LINKER_FLAGS=
+     "-Wl,--export-dynamic"` + aplicação do 0004 + **assert HARD 4b**: 28
+     exports obrigatórios no `.dynsym` (`M3_GLIBC_SHIMS_OK`).
+- **Validação local pré-push:** build completo do box64 com NDK r28b
+  (bionic/arm64, dynarec ON): compila limpo; `M3_GLIBC_SHIMS_OK` local; patch
+  0001+0004 aplicam limpos juntos em checkout fresco do SHA pinado. Hosts
+  glibc: bloco 0004 compila FORA e `entrypoint.c` gera o mesmo código → CI
+  host-linux/box64-arm64 inalterados.
+- **versionCode 3** (0.2.0-poc-m3, mantido).
+- Pendente para fechar o M3: CI verde no novo run + critério 4 — reteste
+  on-device com o APK do fix #2 (ON_DEVICE_TEST.md §8, histórico §8.6).

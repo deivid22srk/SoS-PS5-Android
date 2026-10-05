@@ -133,10 +133,13 @@ Critérios de aceite:
    com veredito verde exigindo os 5 markers + exit 1 (M1/M2 intocados).
 4. [ ] Teste on-device (motorola edge 30 fusion, Android 14): botão M3 verde
    no app, logcat com markers, sem crash. 1ª tentativa (APK v1, run
-   37239106249) = FALHA exit=139 por glibc guest ausente no device (KB-002) →
+   37239106249) = FALHA exit=139 com ~27 relocações não resolvidas (KB-002) →
    fix #1 (run
    [37242064025](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37242064025),
-   APK v2 25,6 MB com glibc guest via assets/rootfs) aguardando o usuário.
+   APK v2 25,6 MB com glibc guest via assets/rootfs) = MESMA FALHA no device
+   (diagnóstico refutado: box64 nunca carrega a libc real — contrato §7.1) →
+   fix #2 (patches/0004 shims bionic no box64 + `--export-dynamic` + assert
+   `M3_GLIBC_SHIMS_OK`; APK v3) aguardando CI + usuário.
 
 Histórico de status (fix-loop CI do M3, 2026-10-05):
 - Run 37237030734: host-linux SUCCESS no 1º try; box64-arm64 SUCCESS
@@ -151,7 +154,13 @@ Histórico de status (fix-loop CI do M3, 2026-10-05):
 - Run 37242064025 (fix #1 pós-falha de aparelho, KB-002): **3/3 jobs SUCCESS
   no 1º try** — glibc guest x86-64 via assets/rootfs (`M3_GLIBC_ASSETS_OK`) +
   UI rolável + versionCode 2; APK v5 arquivado
-  (download/SoS-PS5-Android-M3-fix1-debug.apk).
+  (download/SoS-PS5-Android-M3-fix1-debug.apk). RETESTE NO DEVICE = MESMA
+  FALHA (logcat -falha2.txt) → fix #2: diagnóstico corrigido (GO/GOM do
+  wrapped libc + ENABLE_EXPORTS no-op no Android; contrato §7.1, KB-002
+  revisado), patches/0004 + `--export-dynamic` + assert 4b
+  (`M3_GLIBC_SHIMS_OK`), validado localmente com NDK r28b (build bionic
+  completo + 28 exports no .dynsym); auditoria de símbolos
+  (scripts/audit-symbols.py) = zero gaps restantes.
 
 ## M4 — Memória `[ ]`
 

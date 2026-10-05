@@ -148,3 +148,53 @@ Decisão (paridade exata com a leg A do CI, sem recompilar nada):
    homônimo via rootfs. Se o reteste mostrar dependência do ld.so real, o
    próximo passo documentado é `patchelf --set-interpreter` com o caminho do
    filesDir (decisão futura, fora do escopo do fix #1).
+
+## 7.1 M3 fix #2 — shims bionic no box64 + export-dynamic (2026-10-05, SUPEROU o §7)
+
+O **2º teste de aparelho** (mesmo device, APK do run 37242064025 / commit
+`8ab2e97`, COM os assets do §7 presentes e extraídos) reproduziu o mesmo
+crash exit=139 com as mesmas 27 relocações — **refutando o diagnóstico do
+§7** (evidência: `docs/evidence/m3-device-logcat-2026-10-05-falha2.txt`).
+
+Causa raiz real (KB-002 revisado; análise de `src/librarian/library.c`,
+`src/wrapped/wrappedlib_init.h` e `src/emu/entrypoint.c` do box64 @abfb8c3):
+
+1. `libc.so.6`/`libm.so.6`/`ld-linux-x86-64.so.2` são libs "essential
+   WRAPPED": o box64 instancia o wrapper com `dlopen(NULL)` (o próprio
+   processo box64) e **nunca abre os arquivos reais** — a glibc guest do §7
+   é INERTE para o loader. Símbolos GO resolvem por
+   `dlsym(dlopen(NULL), nome)`: no CI glibc o escopo global fornece tudo; no
+   bionic, nenhum dos 27 existe.
+2. `__libc_start_main` é GOM (`dlsym(box64lib, "my___libc_start_main")`), mas
+   `entrypoint.c` só compila `my___libc_start_main` em hosts NÃO-Android
+   (`#ifdef ANDROID` compila o variante bionic `my___libc_init`) e o CMake
+   `ENABLE_EXPORTS` é no-op no toolchain Android → dupla ausência no device.
+
+Decisão (paridade de superfície: tudo que o CI glibc resolve via escopo
+global passa a existir no binário Android):
+
+1. `patches/0004-android-glibc-shims.patch`:
+   a. `wrappedlibc.c` — bloco `#if defined(ANDROID) && !defined(STATICBUILD)`
+      com 27 shims (protótipos = assinaturas registradas em
+      `wrappedlibc_private.h`): locale C-only (`_l` → funções simples),
+      gettext → identidade, `_chk` → sem-check, `__errno_location` → `&errno`,
+      `__xpg_strerror_r` → `strerror_r` POSIX (achado da AUDITORIA — falha
+      LAZY que o device não alcançou), dummies não-NULL para
+      newlocale/duplocale/uselocale.
+   b. `entrypoint.c` — `my___libc_start_main` (e `my32___libc_start_main`)
+      compilados INCONDICIONALMENTE (no Android coexistem com
+      `my___libc_init` do upstream; hosts glibc: código-gerado idêntico).
+2. `scripts/ci-build-box64.sh`: `-DCMAKE_EXE_LINKER_FLAGS="-Wl,--export-dynamic"`
+   (exporta `my_*` + shims para o `.dynsym`; o mesmo `dlopen(NULL)` cobre GO
+   e GOM) + aplicação do patch 0004 + **assert HARD etapa 4b**: os 28 exports
+   obrigatórios no `.dynsym` (`M3_GLIBC_SHIMS_OK` / falha =
+   `BOX64_EXPORT_SURFACE_INCOMPLETE`).
+3. Validação local pré-push: build completo do box64 com NDK r28b (bionic,
+   dynarec ON) — compila limpo e os 28 exports presentes
+   (`M3_GLIBC_SHIMS_OK`).
+4. `scripts/audit-symbols.py` (novo, também em `scripts/` do repo): audita
+   cada símbolo UND dos ELFs guest do APK contra bionic ∪ exports box64 ∪
+   GOM ∪ libs guest — provedor-modelo correto (GO ≠ provider). Run contra o
+   APK do run 19: gaps = exatamente os 27 + `__xpg_strerror_r`, zero outros.
+5. A glibc guest do §7 PERMANECE no APK (inerte/inofensiva — candidate à
+   remoção ou reaproveitamento no M4); a rootfs mínima segue 4 arquivos.

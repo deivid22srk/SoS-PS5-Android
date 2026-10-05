@@ -84,16 +84,23 @@ fi
 
 # ---------------------------------------------------------------------------
 # 3) Fetch upstream box64 at a PINNED commit (decision D5: never committed here;
-#    pinned for reproducibility) and apply the Android seccomp-safe patch.
+#    pinned for reproducibility) and apply the repo-local Android patches
+#    (0001 seccomp + 0004 bionic glibc shims — see BOX64 list below).
 #
-#    The patch stubs set_robust_list/get_robust_list under __ANDROID__ (arm64
+#    Patch 0001 stubs set_robust_list/get_robust_list under __ANDROID__ (arm64
 #    syscalls 99/100 are NOT in the seccomp allowlist for untrusted apps; the
 #    direct passthrough killed the guest with SIGSYS = exit 159 on the user's
 #    motorola edge 30 fusion / Android 14). On non-Android builds the patch
 #    compiles out completely (Linux CI path is unchanged).
 # ---------------------------------------------------------------------------
 BOX64_PINNED_SHA="abfb8c3b2faddf2273d8ebe532c362d86bfa0356"
-BOX64_PATCH="$REPO_ROOT/patches/0001-android-seccomp-robust-list.patch"
+# Repo-local patches applied to box64 (see apply_patch calls below):
+#   0001 — Android seccomp stubs (set_robust_list/get_robust_list — M1).
+#   0004 — bionic glibc-compat shims for the wrapped libc (KB-002 fix #2): the
+#          27 glibc symbols dynamic guests reference that bionic does not
+#          export (locale/_l family, gettext family, _chk family,
+#          __errno_location, __xpg_strerror_r). ANDROID-only block — compiles
+#          out on glibc hosts (desktop/CI behavior unchanged).
 
 log "Fetching ptitSeb/box64 @ $BOX64_PINNED_SHA into $BOX64_SRC"
 rm -rf "$BOX64_SRC"
@@ -114,17 +121,25 @@ if [ "$BOX64_COMMIT" != "$BOX64_PINNED_SHA" ]; then
     echo "WARNING: box64 HEAD ($BOX64_COMMIT) differs from the pinned SHA ($BOX64_PINNED_SHA)"
 fi
 
-log "Applying Android seccomp-safe patch to box64"
-[ -f "$BOX64_PATCH" ] || die "BOX64_PATCH_FAILED: patch file missing: $BOX64_PATCH"
-if grep -q "BOX64_ANDROID_SECCOMP_STUB" "$BOX64_SRC/src/emu/x64syscall.c"; then
-    echo "patch already present (upstream fix or previously applied) — skipping"
-else
-    git -C "$BOX64_SRC" apply --whitespace=nowarn "$BOX64_PATCH" \
-        || die "BOX64_PATCH_FAILED: git apply failed on box64 $BOX64_COMMIT"
-    grep -q "BOX64_ANDROID_SECCOMP_STUB" "$BOX64_SRC/src/emu/x64syscall.c" \
-        || die "BOX64_PATCH_FAILED: marker BOX64_ANDROID_SECCOMP_STUB missing after apply"
-    echo "patch applied cleanly on box64 $BOX64_COMMIT"
-fi
+log "Applying Android patches to box64"
+# apply_patch <patch> <marker> <marker-file (relative to box64 src)>
+apply_patch() {
+    local patch="$1" marker="$2" file="$3"
+    [ -f "$patch" ] || die "BOX64_PATCH_FAILED: patch file missing: $patch"
+    if grep -q "$marker" "$BOX64_SRC/$file" 2>/dev/null; then
+        echo "$(basename "$patch") already present (upstream fix or previously applied) — skipping"
+        return 0
+    fi
+    git -C "$BOX64_SRC" apply --whitespace=nowarn "$patch" \
+        || die "BOX64_PATCH_FAILED: git apply failed for $(basename "$patch") on box64 $BOX64_COMMIT"
+    grep -q "$marker" "$BOX64_SRC/$file" \
+        || die "BOX64_PATCH_FAILED: marker $marker missing after applying $(basename "$patch")"
+    echo "$(basename "$patch") applied cleanly on box64 $BOX64_COMMIT"
+}
+apply_patch "$REPO_ROOT/patches/0001-android-seccomp-robust-list.patch" \
+    "BOX64_ANDROID_SECCOMP_STUB" "src/emu/x64syscall.c"
+apply_patch "$REPO_ROOT/patches/0004-android-glibc-shims.patch" \
+    "sos_android_dummy_locale" "src/wrapped/wrappedlibc.c"
 
 # ---------------------------------------------------------------------------
 # 4) Build box64 for bionic (PIE executable, arm64-v8a, android-28)
@@ -136,12 +151,19 @@ build_box64() { # $1: extra cmake args, $2: log file
     rm -rf "$BUILD_DIR/box64-build"
     mkdir -p "$BUILD_DIR/box64-build"
     echo "cmake args: $extra"
+    # KB-002 fix #2: CMake's ENABLE_EXPORTS is a no-op on the Android
+    # toolchain (Platform/Android clears CMAKE_SHARED_LIBRARY_LINK_*_FLAGS,
+    # so -rdynamic is never passed). Without exports, box64's wrapped libs
+    # cannot resolve GOM symbols via dlsym(box64lib, "my_*") on device —
+    # e.g. __libc_start_main — and the bionic glibc-compat shims from
+    # patches/0004 stay invisible to the GO dlsym(dlopen(NULL)) path.
     cmake -S "$BOX64_SRC" -B "$BUILD_DIR/box64-build" \
         -DCMAKE_TOOLCHAIN_FILE="$NDK_HOME/build/cmake/android.toolchain.cmake" \
         -DANDROID_ABI=arm64-v8a \
         -DANDROID_PLATFORM=android-28 \
         -DANDROID=ON \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DCMAKE_EXE_LINKER_FLAGS="-Wl,--export-dynamic" \
         $PAGE_SIZE_FLAG \
         $extra > "$logfile" 2>&1 || { tail -n 60 "$logfile"; return 1; }
     make -C "$BUILD_DIR/box64-build" -j"$(nproc)" >> "$logfile" 2>&1 || { tail -n 60 "$logfile"; return 1; }
@@ -186,6 +208,39 @@ echo "--- readelf header ---"
 cp -f "$BOX64_BIN" "$JNILIBS_DIR/libbox64.so" || die "failed to install libbox64.so into jniLibs"
 chmod 755 "$JNILIBS_DIR/libbox64.so" || die "chmod 755 failed on libbox64.so"
 echo "Installed: $JNILIBS_DIR/libbox64.so (dynarec=$DYNAREC_MODE, commit=$BOX64_COMMIT)"
+
+# ---------------------------------------------------------------------------
+# 4b) KB-002 fix #2 HARD asserts: the exported symbol surface that makes the
+#     DYNAMIC anyhost loadable on device. CMake ENABLE_EXPORTS is a no-op on
+#     Android, so --export-dynamic (see build_box64) is what puts box64's
+#     my_* (GOM) symbols AND the 0004 bionic glibc shims into .dynsym, where
+#     the wrapped-libc GO/GOM paths find them via dlsym(dlopen(NULL)).
+#     The exact list below = every symbol the 2026-10-05 device log reported
+#     missing + __xpg_strerror_r (audit) — keep in sync with patch 0004.
+# ---------------------------------------------------------------------------
+log "Asserting bionic export surface (KB-002 fix #2)"
+command -v readelf >/dev/null 2>&1 || die "readelf not available for export-surface asserts"
+REQUIRED_EXPORTS="my___libc_start_main
+__errno_location
+__xpg_strerror_r
+__newlocale __freelocale __duplocale __uselocale __nl_langinfo_l
+__strtod_l __strtof_l __strcoll_l __strxfrm_l __wcscoll_l __wcsxfrm_l
+__wctype_l __iswctype_l __towlower_l __towupper_l __strftime_l __wcsftime_l
+__mbsrtowcs_chk __mbsnrtowcs_chk __wmemcpy_chk __wmemset_chk
+gettext dgettext bindtextdomain bind_textdomain_codeset"
+DYN_SYMS="$(readelf -W --dyn-syms "$JNILIBS_DIR/libbox64.so" 2>/dev/null)" || die "readelf failed on $JNILIBS_DIR/libbox64.so"
+MISSING_EXPORTS=""
+for sym in $REQUIRED_EXPORTS; do
+    if ! echo "$DYN_SYMS" | grep -qE "(^|[[:space:]])${sym}(@|$|[[:space:]])"; then
+        MISSING_EXPORTS="$MISSING_EXPORTS $sym"
+    fi
+done
+if [ -n "$MISSING_EXPORTS" ]; then
+    echo "!!! exported-surface check FAILED — missing from libbox64.so .dynsym:$MISSING_EXPORTS"
+    echo "!!! check: -DCMAKE_EXE_LINKER_FLAGS=\"-Wl,--export-dynamic\" in build_box64 + patches/0004 applied"
+    die "BOX64_EXPORT_SURFACE_INCOMPLETE"
+fi
+echo "M3_GLIBC_SHIMS_OK: all $(echo $REQUIRED_EXPORTS | wc -w) required exports present in libbox64.so .dynsym"
 
 # ---------------------------------------------------------------------------
 # 5) Build the STATIC x86-64 payload (built independently here, even if a

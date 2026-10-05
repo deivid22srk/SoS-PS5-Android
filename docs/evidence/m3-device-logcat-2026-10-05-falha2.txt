@@ -1,0 +1,104 @@
+SDK: 34
+PRODUCT_NAME: tundra_g
+DEVICE_NAME: tundra
+BOARD_NAME: tundra
+SUPPORTED_ABIS: arm64-v8a, armeabi-v7a, armeabi
+MANUFACTURER: motorola
+BRAND: motorola
+MODEL: motorola edge 30 fusion
+
+1791192191.373 10412 24675 24675 I libc    : SetHeapTaggingLevel: tag level set to 0
+1791192191.378 10412 24675 24675 I vid22srk.sosps5: Late-enabling -Xcheck:jni
+1791192191.408 10412 24675 24675 I vid22srk.sosps5: Using generational CollectorTypeCC GC.
+1791192191.416 10412 24675 24675 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+1791192191.434 10412 24675 24675 D CompatibilityChangeReporter: Compat change id reported: 171979766; UID 10412; state: DISABLED
+1791192191.435 10412 24675 24675 D CompatibilityChangeReporter: Compat change id reported: 242716250; UID 10412; state: DISABLED
+1791192191.442 10412 24675 24675 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.test.base.jar
+1791192191.446 10412 24675 24675 D nativeloader: Configuring clns-4 for other apk /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/base.apk. target_sdk_version=28, uses_libraries=, library_path=/data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64:/data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/br.deivid22srk.sosps5
+1791192191.446 10412 24675 24675 D nativeloader: Extending system_exposed_libraries: libbinauralrenderer_wrapper.qti.so:libhoaeffects.qti.so:libQOC.qti.so:libimgTuner_jni.motoimagetuner.so:libupdateprof.qti.so:libQOC.qti.so:libdiag_system.qti.so:libqape.qti.so:libqesdk_ndk_platform.qti.so:liblistenjni.qti.so:libjni_helper.motocameradesktop.so
+1791192191.453 10412 24675 24675 D nativeloader: Load libframework-connectivity-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity.jar: ok
+1791192191.458 10412 24675 24675 V GraphicsEnvironment: Currently set values for:
+1791192191.458 10412 24675 24675 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+1791192191.458 10412 24675 24675 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+1791192191.458 10412 24675 24675 V GraphicsEnvironment: ANGLE GameManagerService for br.deivid22srk.sosps5: false
+1791192191.458 10412 24675 24675 V GraphicsEnvironment: br.deivid22srk.sosps5 is not listed in per-application setting
+1791192191.458 10412 24675 24675 V GraphicsEnvironment: Updatable production driver is not supported on the device.
+1791192191.462 10412 24675 24675 I Typeface: updateThemeFont new=Rookery-Regular;old=sans-serif;new=Rookery-Stacked;old=
+1791192191.491 10412 24675 24675 D CompatibilityChangeReporter: Compat change id reported: 210923482; UID 10412; state: DISABLED
+1791192191.492 10412 24675 24675 D CompatibilityChangeReporter: Compat change id reported: 37756858; UID 10412; state: ENABLED
+1791192191.527 10412 24675 24675 D CompatibilityChangeReporter: Compat change id reported: 171228096; UID 10412; state: ENABLED
+1791192191.532 10412 24675 24675 I SOSBox64: === App iniciado (M1 + M2 + M3) ===
+1791192191.532 10412 24675 24675 I SOSBox64: Versão do Android: API 34
+1791192191.532 10412 24675 24675 I SOSBox64: ABI principal: arm64-v8a
+1791192191.532 10412 24675 24675 I SOSBox64: Pasta de bibliotecas nativas: /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64
+1791192191.532 10412 24675 24675 I SOSBox64: libbox64.so: presente
+1791192191.532 10412 24675 24675 I SOSBox64: libpayload64.so: presente
+1791192191.532 10412 24675 24675 I SOSBox64: libanyhost64.so: presente
+1791192191.532 10412 24675 24675 I SOSBox64: libSDL2_sos_native.so: presente
+1791192191.532 10412 24675 24675 I SOSBox64: libs guest M3 (avcodec/avutil/freetype _sos): presentes
+1791192191.532 10412 24675 24675 I SOSBox64: glibc guest x86-64 (assets/rootfs): presentes (libc.so.6, ld-linux-x86-64.so.2, libm.so.6)
+1791192191.539 10412 24675 24675 D CompatibilityChangeReporter: Compat change id reported: 237531167; UID 10412; state: DISABLED
+1791192191.544 10412 24675 24675 D ViewRootImpl: update {(0,0)(fillxfill) sim={forwardNavigation} ty=BASE_APPLICATION wanim=0x10302fe
+1791192191.544 10412 24675 24675 D ViewRootImpl:   fl=LAYOUT_IN_SCREEN LAYOUT_INSET_DECOR SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+1791192191.544 10412 24675 24675 D ViewRootImpl:   pfl=NO_MOVE_ANIMATION FORCE_DRAW_STATUS_BAR_BACKGROUND FIT_INSETS_CONTROLLED
+1791192191.544 10412 24675 24675 D ViewRootImpl:   bhv=DEFAULT
+1791192191.544 10412 24675 24675 D ViewRootImpl:   fitSides=} by setView
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: QUALCOMM build                   : eaa701cd06, I183f6321f0
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: Build Date                       : 10/27/22
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: OpenGL ES Shader Compiler Version: EV031.35.01.12
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: Local Branch                     :
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: Remote Branch                    :
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: Remote Branch                    :
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: Reconstruct Branch               :
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: Build Config                     : S P 10.0.7 AArch64
+1791192191.591 10412 24675 24691 I AdrenoGLES-0: Driver Path                      : /vendor/lib64/egl/libGLESv2_adreno.so
+1791192191.593 10412 24675 24691 I AdrenoGLES-0: PFP: 0x016dc094, ME: 0x00000000
+1791192191.609 10412 24675 24691 I OpenGLRenderer: setGrContext nullptr-->validptr
+1791192191.610 10412 24675 24691 E OpenGLRenderer: Unable to match the desired swap behavior.
+1791192192.135 10412 24675 24680 I vid22srk.sosps5: Compiler allocated 4575KB to compile void android.view.ViewRootImpl.performTraversals()
+1791192195.293 10412 24675 24703 I SOSBox64: Runtime M3 pronto: /data/user/0/br.deivid22srk.sosps5/files/rootfs/lib/libSDL2-2.0.so.0 (3762832 bytes)
+1791192195.314 10412 24675 24703 I SOSBox64: Runtime M3 pronto (glibc guest): /data/user/0/br.deivid22srk.sosps5/files/rootfs/lib/libc.so.6 (2118168 bytes)
+1791192195.317 10412 24675 24703 I SOSBox64: Runtime M3 pronto (glibc guest): /data/user/0/br.deivid22srk.sosps5/files/rootfs/lib/ld-linux-x86-64.so.2 (235408 bytes)
+1791192195.324 10412 24675 24703 I SOSBox64: Runtime M3 pronto (glibc guest): /data/user/0/br.deivid22srk.sosps5/files/rootfs/lib/libm.so.6 (952616 bytes)
+1791192195.325 10412 24675 24703 I SOSBox64: Executando: /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libbox64.so /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so --game-dir /data/user/0/br.deivid22srk.sosps5/files/game (BOX64_LOG=DEBUG)
+1791192195.327 10412 24704 24704 W libbox64.so: type=1400 audit(0.0:212677): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c156,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791192195.327 10412 24704 24704 W libbox64.so: type=1400 audit(0.0:212678): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c156,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791192195.327 10412 24704 24704 W libbox64.so: type=1400 audit(0.0:212679): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c156,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791192195.327 10412 24704 24704 W libbox64.so: type=1400 audit(0.0:212680): avc:  denied  { search } for  name="tests" dev="dm-49" ino=107 scontext=u:r:untrusted_app_27:s0:c156,c257,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=br.deivid22srk.sosps5
+1791192195.371 10412 24675 24703 I SOSBox64: sh: lscpu: inaccessible or not found
+1791192195.399 10412 24704 24704 W libanyhost64.so: type=1400 audit(0.0:212681): avc:  granted  { execute } for  path="/data/user/0/br.deivid22srk.sosps5/files/rootfs/lib/libSDL2-2.0.so.0" dev="dm-49" ino=251535 scontext=u:r:untrusted_app_27:s0:c156,c257,c512,c768 tcontext=u:object_r:app_data_file:s0:c156,c257,c512,c768 tclass=file app=br.deivid22srk.sosps5
+1791192195.490 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Warning, function my___libc_start_main not found
+1791192195.490 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Warning, function my___libc_start_main not found
+1791192195.490 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Global Symbol __libc_start_main not found, cannot apply R_X86_64_GLOB_DAT @0x100126be0 (0x0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so
+1791192195.490 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __errno_location not found, cannot apply R_X86_64_JUMP_SLOT @0x1001264f8 (0x14050) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.491 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wcsftime_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126520 (0x140a0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=3 / GLIBC_2.3)
+1791192195.491 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __towlower_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126530 (0x140c0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.491 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol gettext not found, cannot apply R_X86_64_JUMP_SLOT @0x100126550 (0x14100) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.491 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wcscoll_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126568 (0x14130) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.492 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __mbsnrtowcs_chk not found, cannot apply R_X86_64_JUMP_SLOT @0x100126588 (0x14170) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=6 / GLIBC_2.4)
+1791192195.492 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __iswctype_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001265a0 (0x141a0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.492 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strtod_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001265a8 (0x141b0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.492 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wcsxfrm_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001265f0 (0x14240) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.493 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __freelocale not found, cannot apply R_X86_64_JUMP_SLOT @0x100126610 (0x14280) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.493 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol bind_textdomain_codeset not found, cannot apply R_X86_64_JUMP_SLOT @0x100126620 (0x142a0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.493 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __uselocale not found, cannot apply R_X86_64_JUMP_SLOT @0x100126648 (0x142f0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=3 / GLIBC_2.3)
+1791192195.493 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol dgettext not found, cannot apply R_X86_64_JUMP_SLOT @0x100126698 (0x14390) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.493 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strcoll_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001266d0 (0x14400) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.494 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strtof_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001266f0 (0x14440) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.494 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strftime_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126700 (0x14460) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=3 / GLIBC_2.3)
+1791192195.494 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wmemcpy_chk not found, cannot apply R_X86_64_JUMP_SLOT @0x100126718 (0x14490) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=6 / GLIBC_2.4)
+1791192195.495 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __strxfrm_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126798 (0x14590) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.495 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol bindtextdomain not found, cannot apply R_X86_64_JUMP_SLOT @0x1001267c8 (0x145f0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.495 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __nl_langinfo_l not found, cannot apply R_X86_64_JUMP_SLOT @0x1001267f0 (0x14640) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.495 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __mbsrtowcs_chk not found, cannot apply R_X86_64_JUMP_SLOT @0x100126858 (0x14710) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=6 / GLIBC_2.4)
+1791192195.496 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wmemset_chk not found, cannot apply R_X86_64_JUMP_SLOT @0x100126880 (0x14760) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=6 / GLIBC_2.4)
+1791192195.496 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __wctype_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126888 (0x14770) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.496 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __newlocale not found, cannot apply R_X86_64_JUMP_SLOT @0x1001268f8 (0x14850) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.496 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __towupper_l not found, cannot apply R_X86_64_JUMP_SLOT @0x100126928 (0x148b0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.497 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Error: Symbol __duplocale not found, cannot apply R_X86_64_JUMP_SLOT @0x1001269c0 (0x149e0) in /data/app/~~c5Re1vyVg_sgpePBBPcmAg==/br.deivid22srk.sosps5-t4IHQ09OBxUU9ZKA-YelzQ==/lib/arm64/libanyhost64.so (optver=2 / GLIBC_2.2.5)
+1791192195.527 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] 24704|Warning, calling Signal 11 function handler SIG_DFL
+1791192195.527 10412 24675 24703 I SOSBox64: [[31mBOX64[0m] Unhandled signal caught, dying with the signal
+1791192195.640 10412 24675 24675 E SOSBox64: FALHA (M3): resultado inesperado, exit=139
+1791192198.781 10412 24675 24691 D Surface : Surface::disconnect
+1791192198.781 10412 24675 24691 D BufferQueueProducer: [VRI[MainActivity]#0(BLAST Consumer)0](id:606300000000,api:1,p:24675,c:24675) disconnect: api 1
+1791192198.873 10412 24675 24675 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=falsecallback=android.view.ViewRootImpl$$ExternalSyntheticLambda17@6ed47ec

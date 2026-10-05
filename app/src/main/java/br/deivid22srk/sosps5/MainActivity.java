@@ -19,16 +19,27 @@
  * (jniLibs libSDL2_sos_native.so) to <filesDir>/rootfs/lib/libSDL2-2.0.so.0 and
  * exports LD_LIBRARY_PATH + BOX64_LD_LIBRARY_PATH.
  *
- * M3 fix #1 (task 3-g, on-device failure 2026-10-05): the DYNAMIC host also
- * needs the REAL x86-64 glibc (versioned __libc_start_main@GLIBC_2.34,
- * locale/gettext and _chk symbols) — box64's wrapped libc does NOT provide
- * them and the host died with SIGSEGV (exit=139) after ~27 unresolved
- * relocations. CI leg A only passed because its BOX64_LD_LIBRARY_PATH
- * included the cross glibc dir. The APK now ships the SAME cross glibc
- * (assets/rootfs/libc.so.6, ld-linux-x86-64.so.2, libm.so.6 — sourced from
- * libc6-amd64-cross of the SAME runner that builds anyhost, exact glibc
- * version parity) and prepareM3Runtime() extracts them to
- * <filesDir>/rootfs/lib/, which is already on BOX64_LD_LIBRARY_PATH.
+ * M3 fix #1 (task 3-g, on-device failure 2026-10-05): FIRST attempt — ship the
+ * real x86-64 glibc as assets/rootfs. DIAGNOSIS CORRECTED by fix #2: box64
+ * treats libc.so.6/libm.so.6/ld-linux as "essential WRAPPED" libs and NEVER
+ * loads the real files from BOX64_LD_LIBRARY_PATH, so the glibc assets are
+ * inert (kept: harmless, may serve M4 guest-lib experiments). The device log
+ * (run 19 APK) reproduced all 27 unresolved relocations.
+ *
+ * M3 fix #2 (task 3-g, 2026-10-05): the REAL root cause of the on-device
+ * SIGSEGV (exit=139) is two-fold:
+ *   (a) box64's wrapped libc resolves GO symbols via dlsym(dlopen(NULL)) =
+ *       the box64 process global scope, which on bionic lacks 27 glibc
+ *       symbols dynamic guests reference (locale/_l family, gettext family,
+ *       _chk family, __errno_location, __xpg_strerror_r) — on glibc hosts
+ *       (CI arm64) the same lookup resolves from the host libc, which is why
+ *       CI was green;
+ *   (b) CMake's ENABLE_EXPORTS is a no-op on the Android toolchain, so
+ *       box64's own my_* (GOM) symbols — e.g. my___libc_start_main — were
+ *       not exported and dlsym(box64lib, "my_*") failed on device too.
+ * Fix: patches/0004-android-glibc-shims.patch (ANDROID-only shims compiled
+ * into the wrapped libc) + -Wl,--export-dynamic on the box64 NDK link, with
+ * a hard CI assert on the exported surface (scripts/ci-build-box64.sh 4b).
  * The M3 button adds the FFmpeg/freetype probe markers and requires
  * reason=no-eboot EXACTLY (contract: docs/M3-LIBS-RUNTIME.md sections 3/4/7).
  *

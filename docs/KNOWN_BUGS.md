@@ -48,10 +48,11 @@ contorno, status e quando reavaliar.
 
 ---
 
-## KB-002 — Host M3 dinâmico morre com SIGSEGV no aparelho: glibc x86-64 real ausente no device (M3)
+## KB-002 — Host M3 dinâmico morre com SIGSEGV no aparelho: superfície de símbolos do box64/bionic incompleta (M3)
 
-- **Sintoma (2026-10-05, motorola edge 30 fusion / Android 14; logcat integral
-  em `docs/evidence/m3-device-logcat-2026-10-05-falha1.txt`):** botão M3
+- **Sintoma (2026-10-05, motorola edge 30 fusion / Android 14; logcats
+  integrais em `docs/evidence/m3-device-logcat-2026-10-05-falha1.txt` e
+  `-falha2.txt` — o 2º log JÁ COM a glibc guest do fix #1 no APK):** botão M3
   falha com `FALHA (M3): resultado inesperado, exit=139` (SIGSEGV). O logcat
   mostra ~27 relocações não resolvidas antes do crash — `__libc_start_main`
   (GLOB_DAT; `Warning, function my___libc_start_main not found` 2×),
@@ -65,25 +66,54 @@ contorno, status e quando reavaliar.
   versão (`optver=N / GLIBC_2.x`) — seguidas de `Unhandled signal caught`.
   SDL2 nativa OK antes disso (`avc: granted { execute }` sobre a
   `rootfs/lib/libSDL2-2.0.so.0`).
-- **Causa raiz:** o anyhost do M3 é **DINÂMICO** e exige a glibc x86-64 REAL
-  (símbolos versionados — ex. `__libc_start_main@GLIBC_2.34` — que os wrappers
-  internos do box64 @abfb8c3 não fornecem com a versão pedida). O CI
-  (`box64-arm64`, leg A) só passou porque o `BOX64_LD_LIBRARY_PATH` incluía o
-  diretório da glibc cross (`libc6-amd64-cross`) — **o device não tinha nada
-  equivalente**. No M2 o problema não aparecia porque o binário era ESTÁTICO
-  (sem relocações dinâmicas). Premissa do contrato M3 §1 ("glibc não vai no
-  pacote") refutada por esta evidência; contrato emendado (§7).
-- **Contorno (APLICADO — task 3-g, "M3 fix #1"):** o APK embarca a MESMA glibc
-  cross do CI — `assets/rootfs/{libc.so.6, ld-linux-x86-64.so.2, libm.so.6}`,
-  copiados do `libc6-amd64-cross` do MESMO runner que constrói o anyhost
-  (paridade exata de versão com a glibc do link). O app extrai para
-  `<filesDir>/rootfs/lib/` (já no `BOX64_LD_LIBRARY_PATH`); `libm.so.6` é
-  DT_NEEDED de `libavutil_sos.so`. Assert HARD novo no job apk:
-  `M3_GLIBC_ASSETS_OK` (ELF x86-64 dinâmico + `__libc_start_main@GLIBC_2.34+`
-  via `readelf -W`).
-- **Status:** correção enviada (aguarda CI verde + reteste no aparelho). Se o
-  SIGSEGV persistir com a glibc presente, reabrir com logcat completo —
-  próximo candidato documentado no contrato §7.4: dependência do ld.so real
-  via PT_INTERP `/lib64/...` (hoje provado não-fatal pelo próprio log do
-  crash); correção planejada: `patchelf --set-interpreter` p/ o caminho do
-  filesDir.
+- **Fix #1 (glibc guest no APK) NÃO resolveu** — o logcat #2 (APK do run
+  37242064025, commit 8ab2e97) reproduz o mesmo crash com os assets presentes
+  e extraídos (`Runtime M3 pronto (glibc guest)` nos 3 arquivos).
+- **Causa raiz CORRIGIDA (análise do código box64 @abfb8c3, auditoria de
+  símbolos do APK run 19 — `scripts/audit-symbols.py`):** dois mecanismos
+  independentes:
+  1. **GO sem backing no bionic:** box64 trata `libc.so.6`, `libm.so.6` e
+     `ld-linux-x86-64.so.2` como libs "essential **WRAPPED**"
+     (`isEssentialLib` em `src/librarian/library.c`) — o wrapper é criado com
+     `lib->w.lib = dlopen(NULL)` (o PRÓPRIO processo box64) e **nunca carrega
+     os arquivos reais** do `BOX64_LD_LIBRARY_PATH` (por isso a glibc guest do
+     fix #1 é inerte). Símbolos GO resolvem via `dlsym(dlopen(NULL), nome)`: no
+     CI (box64 linkado à glibc) o escopo global tem TODOS os símbolos da
+     glibc; no aparelho (bionic) nenhum dos 27 existe. Os 27 estão
+     REGISTRADOS nos mapas do wrapper (`wrappedlibc_private.h`) — falta o
+     PROVIDER no device, não o registro.
+  2. **GOM sem exportação do binário:** `__libc_start_main` é GOM — resolve
+     via `dlsym(box64lib, "my___libc_start_main")`. O binário do box64 no
+     Android não exporta `my_*` porque o `ENABLE_EXPORTS ON` do CMake é
+     no-op no toolchain Android (Platform/Android limpa
+     `CMAKE_SHARED_LIBRARY_LINK_*_FLAGS` → `-rdynamic` nunca é passado).
+     Provado no APK do run 19: `readelf --dyn-syms libbox64.so | grep -c
+     my___libc_start_main` = **0** (2.662 símbolos).
+  A auditoria também identificou `__xpg_strerror_r` (referenciado por
+  `libavutil_sos.so`, GO registrado, ausente no bionic) que falharia LAZY
+  (PLT) na primeira chamada — o device morreu antes (as libs guest têm binding
+  lazy; só o binário principal reloca JUMP_SLOT eagerly).
+- **Contorno (APLICADO — "M3 fix #2"):**
+  1. `patches/0004-android-glibc-shims.patch` — bloco `#if defined(ANDROID)
+     && !defined(STATICBUILD)` no fim de `wrappedlibc.c` com os 27 shims
+     (locale C-only: `_l` → funções simples; gettext → identidade; `_chk` →
+     variantes sem-check; `__errno_location` → `&errno`; `__xpg_strerror_r`
+     → `strerror_r` POSIX + return buf; locale dummies não-NULL para
+     `__newlocale/__duplocale/__uselocale`, `__freelocale` no-op).
+     Limitação conhecida: `mbstate_t` glibc-x86_64 e bionic-arm64 têm o
+     MESMO tamanho (8 B) e estados INICIAIS compatíveis (C-locale/ASCII
+     seguros), mas um estado NÃO-inicial de multibyte dividido do guest
+     poderia ser mal interpretado — irrelevante para os probes M3. Compila
+     FORA em hosts glibc → CI/behavior desktop inalterados.
+  2. `scripts/ci-build-box64.sh`: `-DCMAKE_EXE_LINKER_FLAGS=
+     "-Wl,--export-dynamic"` no cmake do box64 → exporta `my_*` (GOM) e os
+     shims para o `.dynsym` (o mesmo handle `dlopen(NULL)` cobre GO e GOM).
+  3. Assert HARD pós-build (etapa 4b): todos os 28 exports obrigatórios
+     (`my___libc_start_main` + 27 shims) presentes no `.dynsym` do
+     `libbox64.so` — `M3_GLIBC_SHIMS_OK` / falha =
+     `BOX64_EXPORT_SURFACE_INCOMPLETE`.
+- **Status:** correção enviada (aguarda CI verde + reteste no aparelho). A
+  glibc guest do fix #1 permanece no APK (inerte, inofensiva; candidata a
+  remover ou reaproveitar no M4). Se o SIGSEGV persistir, reabrir com logcat
+  completo + auditoria `scripts/audit-symbols.py` re-executada contra o novo
+  APK.

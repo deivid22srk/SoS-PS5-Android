@@ -327,7 +327,7 @@ adb logcat -s SOSBox64:V > sosbox64-m3.log
 | `SOS_HOST_M3_FAIL lib=freetype reason=...` | `FT_Init_FreeType` falhou | idem |
 | `FALHA — libSDL2_sos_native.so ausente no APK` | APK sem a SDL2 nativa (build apk antigo) | baixe o artifact do run correto |
 | `FALHA — Falha ao extrair a glibc guest ... (assets/rootfs)` | APK sem os assets de glibc (build apk antigo, pré-fix #1) | baixe o APK do run do fix #1 (versionCode 2) |
-| exit 139 com `Symbol ... not found` (locale/gettext/`_chk`/`__libc_start_main`) no logcat | glibc guest ausente no `BOX64_LD_LIBRARY_PATH` (KB-002) — APK pré-fix #1 ou extração falhou | confira a linha `glibc guest x86-64` no diagnóstico de abertura; mande o logcat se `presentes` e ainda assim falhar |
+| exit 139 com `Symbol ... not found` (locale/gettext/`_chk`/`__libc_start_main`) no logcat | superfície de símbolos do box64/bionic incompleta (KB-002) — APK pré-fix #2 (a glibc guest NÃO é o mecanismo: box64 nunca carrega libc real; ver contrato §7.1) | baixe o APK do run do fix #2; se persistir, mande o logcat integral e rode `scripts/audit-symbols.py` contra o novo APK |
 | exit 139 / Fatal signal no logcat | SIGSEGV sob dynarec (KB-001 reaparecido) | mande o logcat; a matriz KB-001 volta ao CI |
 | `SOS_HOST_INTERNAL_ERROR reason=m3-probe-failed` | qualquer sonda falhou (exit 2) | cole a saída integral |
 | exit ≠ 1 sem markers de sonda | loader não resolveu alguma lib guest | logcat + conferir as 7 libs no diagnóstico de abertura |
@@ -337,9 +337,27 @@ das seções 6/7. Nenhum patch seccomp novo foi necessário no M3.
 
 > **APK de referência:** use sempre o do run mais recente listado no
 > PROGRESS.md. O run [37239106249](https://github.com/deivid22srk/SoS-PS5-Android/actions/runs/37239106249)
-> (sha deba957, 2026-10-05) foi o CI verde dos critérios 1-3, mas o SEU APK
-> (versionCode 1) está superado pelo M3 fix #1: no aparelho ele falha com
-> exit=139 por falta da glibc guest (KB-002) — use o APK do run do fix #1
-> (versionCode 2 / 0.2.0-poc-m3). No CI ARM64 o host M3 passou **sem**
+> (sha deba957) foi o CI verde dos critérios 1-3; o run do fix #1
+> (versionCode 2 / 0.2.0-poc-m3) embarcou a glibc guest, mas **continua
+> falhando no device com exit=139** (logcat `-falha2.txt`) — a glibc guest
+> NÃO é o mecanismo (box64 trata libc como lib "wrapped" e nunca a carrega;
+> KB-002 revisado + contrato §7.1). Use o APK do **M3 fix #2** (versionCode
+> 3): patches/0004 (shims bionic no box64) + `--export-dynamic` + assert
+> `M3_GLIBC_SHIMS_OK`. No CI ARM64 o host M3 passou **sem**
 > `BOX64_DYNAREC_SAFEFLAGS` (KB-001 reavaliado e fechado: wrapper nativo
 > eliminou o gatilho).
+
+### 8.6 Resultados reais no aparelho (histórico do M3)
+
+| # | Data | APK | Resultado | Evidência |
+|---|---|---|---|---|
+| 1 | 2026-10-05 | versionCode 1 (run 37239106249, sha deba957) | FALHA: exit=139 após ~27 relocações não resolvidas (`__libc_start_main`, locale/`_l`, gettext, `_chk`) | `docs/evidence/m3-device-logcat-2026-10-05-falha1.txt` |
+| 2 | 2026-10-05 | versionCode 2 (run 37242064025, sha 8ab2e97, fix #1: glibc guest) | MESMA FALHA (exit=139, mesmos 27 símbolos) com os assets presentes e extraídos → refutou o diagnóstico do fix #1 | `docs/evidence/m3-device-logcat-2026-10-05-falha2.txt` |
+| 3 | 2026-10-05 | versionCode 3 (fix #2: patches/0004 shims bionic + `--export-dynamic` + assert `M3_GLIBC_SHIMS_OK`) | AGUARDANDO reteste do usuário (CI: pendente no momento do commit) | — |
+
+Causa raiz consolidada (KB-002 revisado / contrato §7.1): GO sem backing no
+bionic (`dlsym(dlopen(NULL))` = escopo global do processo box64) + GOM sem
+exportação (`ENABLE_EXPORTS` no-op no toolchain Android) + `my___libc_start_main`
+não compilado em hosts Android (`#ifdef ANDROID` do `entrypoint.c`). A UI
+também foi corrigida entre #1 e #2 (ScrollView de página inteira — "não dá pra
+rolar", relato 2026-10-05).

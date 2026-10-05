@@ -1,0 +1,227 @@
+diff --git a/src/emu/entrypoint.c b/src/emu/entrypoint.c
+index d0670fa..01949e3 100644
+--- a/src/emu/entrypoint.c
++++ b/src/emu/entrypoint.c
+@@ -6,7 +6,7 @@
+ #include "elfloader.h"
+ #include "box32.h"
+ 
+-#ifdef ANDROID
++#if defined(ANDROID)
+ void EXPORT my___libc_init(x64emu_t* emu, void* raw_args , void (*onexit)(void) , int (*main)(int, char**, char**), void const * const structors )
+ {
+     //TODO: register fini
+@@ -30,7 +30,11 @@ void EXPORT my___libc_init(x64emu_t* emu, void* raw_args , void (*onexit)(void)
+     SetRBP(emu, Pop64(emu));    // restore RBP
+     emu->quit = 1; // finished!
+ }
+-#else
++#endif // ANDROID
++// SOS-Android (KB-002 fix #2): the glibc-flavored entry below is now compiled
++// UNCONDITIONALLY (was inside #else — never built on ANDROID). Dynamic glibc
++// guests (e.g. the SoS-PS5 anyhost) call __libc_start_main even when the host
++// is bionic; without it the wrapped-libc GOM entry has no provider on device.
+ EXPORT int32_t my___libc_start_main(x64emu_t* emu, int (*main) (int, char * *, char * *), int argc, char * * ubp_av, void (*init) (void), void (*fini) (void), void (*rtld_fini) (void), void (* stack_end))
+ {
+     (void)argc; (void)ubp_av; (void)fini; (void)rtld_fini; (void)stack_end;
+@@ -88,7 +92,7 @@ EXPORT int32_t my___libc_start_main(x64emu_t* emu, int (*main) (int, char * *, c
+     return (int)GetEAX(emu);
+ }
+ #ifdef BOX32
+-#ifdef ANDROID
++#if defined(ANDROID)
+ void EXPORT my32___libc_init(x64emu_t* emu, void* raw_args , void (*onexit)(void) , int (*main)(int, char**, char**), void const * const structors )
+ {
+     //TODO: register fini
+@@ -107,7 +111,9 @@ void EXPORT my32___libc_init(x64emu_t* emu, void* raw_args , void (*onexit)(void
+ 
+     emu->quit = 1; // finished!
+ }
+-#else
++#endif // ANDROID
++// SOS-Android (KB-002 fix #2): same unconditional treatment for the 32-bit
++// glibc-flavored entry.
+ int32_t EXPORT my32___libc_start_main(x64emu_t* emu, int *(main) (int, char * *, char * *), int argc, char * * ubp_av, void (*init) (void), void (*fini) (void), void (*rtld_fini) (void), void (* stack_end))
+ {
+     // let's cheat and set all args...
+@@ -143,6 +149,4 @@ int32_t EXPORT my32___libc_start_main(x64emu_t* emu, int *(main) (int, char * *,
+     emu->quit = 1; // finished!
+     return 0;
+ }
+-#endif
+-#endif
+-#endif
++#endif // BOX32
+diff --git a/src/wrapped/wrappedlibc.c b/src/wrapped/wrappedlibc.c
+index 10c0f34..3465eb7 100644
+--- a/src/wrapped/wrappedlibc.c
++++ b/src/wrapped/wrappedlibc.c
+@@ -5493,4 +5493,168 @@ EXPORT char* secure_getenv(const char* name)
+     freeMy();       \
+     return;     // do not unload...
+ 
++// ---------------------------------------------------------------------------
++// SOS-Android (SoS-PS5-Android) — bionic glibc-compat shims (KB-002 fix #2).
++//
++// On ANDROID the wrapped libc resolves GO symbols with
++// dlsym(dlopen(NULL), name) = the box64 process global scope, which on bionic
++// does NOT export a set of glibc symbols that dynamic x86_64 guests reference
++// (libstdc++ static-linkage pulls the locale/_l family; FFmpeg/freetype pull
++// __errno_location; fortify pulls the _chk family; gettext family is absent
++// from bionic entirely). On glibc hosts those symbols come from the host
++// libc and this whole block compiles out, so desktop/CI behavior is unchanged.
++//
++// The functions below are exported with default visibility; combined with
++// -Wl,--export-dynamic on the box64 link they become resolvable through the
++// dlopen(NULL) global scope. Semantics: locale handling is C-locale only
++// (locale_t argument ignored), gettext is an identity no-op, _chk variants
++// forward to the unchecked bionic functions (the fortify size argument is
++// ignored, matching box64's registered wrapper signatures).
++#if defined(ANDROID) && !defined(STATICBUILD)
++
++#include <wctype.h>  // wctype/iswctype/towlower/towupper (not included at top)
++#include <time.h>    // struct tm/strftime/wcsftime
++
++static char sos_android_dummy_locale = 0;
++
++EXPORT void* __newlocale(int mask, const char* name, void* base)
++{
++    (void)mask; (void)name; (void)base;
++    // Non-NULL stable dummy handle: libstdc++ throws runtime_error on NULL.
++    return (void*)&sos_android_dummy_locale;
++}
++EXPORT void __freelocale(void* loc)
++{
++    (void)loc; // dummy handles are never freed
++}
++EXPORT void* __duplocale(void* loc)
++{
++    return loc ? loc : (void*)&sos_android_dummy_locale;
++}
++EXPORT void* __uselocale(void* loc)
++{
++    (void)loc;
++    return (void*)&sos_android_dummy_locale; // previous "locale"
++}
++EXPORT char* __nl_langinfo_l(int item, void* loc)
++{
++    (void)item; (void)loc;
++    return (char*)"";
++}
++
++EXPORT int* __errno_location(void)
++{
++    return &errno;
++}
++
++EXPORT double __strtod_l(const char* s, char** endptr, void* loc)
++{
++    (void)loc;
++    return strtod(s, endptr);
++}
++EXPORT float __strtof_l(const char* s, char** endptr, void* loc)
++{
++    (void)loc;
++    return strtof(s, endptr);
++}
++EXPORT int __strcoll_l(const char* a, const char* b, void* loc)
++{
++    (void)loc;
++    return strcoll(a, b);
++}
++EXPORT size_t __strxfrm_l(char* dst, const char* src, size_t n, void* loc)
++{
++    (void)loc;
++    return strxfrm(dst, src, n);
++}
++EXPORT int __wcscoll_l(const wchar_t* a, const wchar_t* b, void* loc)
++{
++    (void)loc;
++    return wcscoll(a, b);
++}
++EXPORT size_t __wcsxfrm_l(wchar_t* dst, const wchar_t* src, size_t n, void* loc)
++{
++    (void)loc;
++    return wcsxfrm(dst, src, n);
++}
++EXPORT unsigned long __wctype_l(const char* name, void* loc)
++{
++    (void)loc;
++    return (unsigned long)wctype(name);
++}
++EXPORT int __iswctype_l(unsigned wc, unsigned long desc, unsigned long loc)
++{
++    (void)loc;
++    return iswctype((wint_t)wc, (wctype_t)desc);
++}
++EXPORT int __towlower_l(int wc, void* loc)
++{
++    (void)loc;
++    return towlower((wint_t)wc);
++}
++EXPORT int __towupper_l(int wc, void* loc)
++{
++    (void)loc;
++    return towupper((wint_t)wc);
++}
++EXPORT size_t __strftime_l(char* s, size_t max, const char* fmt, const struct tm* tm, void* loc)
++{
++    (void)loc; // struct tm layout is ABI-compatible between glibc x86_64 and bionic arm64
++    return strftime(s, max, fmt, tm);
++}
++EXPORT size_t __wcsftime_l(wchar_t* s, size_t max, const wchar_t* fmt, const struct tm* tm, void* loc)
++{
++    (void)loc;
++    return wcsftime(s, max, fmt, tm);
++}
++
++EXPORT size_t __mbsrtowcs_chk(wchar_t* dst, const char** src, size_t len, void* ps, size_t flag)
++{
++    (void)flag;
++    return mbsrtowcs(dst, src, len, (mbstate_t*)ps);
++}
++EXPORT size_t __mbsnrtowcs_chk(wchar_t* dst, const char** src, size_t nms, size_t len, void* ps, size_t flag)
++{
++    (void)flag;
++    return mbsnrtowcs(dst, src, nms, len, (mbstate_t*)ps);
++}
++EXPORT wchar_t* __wmemcpy_chk(wchar_t* dst, const wchar_t* src, size_t len, size_t dstlen)
++{
++    (void)dstlen;
++    return wmemcpy(dst, src, len);
++}
++EXPORT wchar_t* __wmemset_chk(wchar_t* dst, wchar_t c, size_t len, size_t dstlen)
++{
++    (void)dstlen;
++    return wmemset(dst, c, len);
++}
++
++EXPORT char* gettext(const char* msgid)
++{
++    return (char*)msgid; // no translations under bionic
++}
++EXPORT char* dgettext(const char* domain, const char* msgid)
++{
++    (void)domain;
++    return (char*)msgid;
++}
++EXPORT char* bindtextdomain(const char* domain, const char* dir)
++{
++    (void)domain; (void)dir;
++    return (char*)"";
++}
++EXPORT char* bind_textdomain_codeset(const char* domain, const char* codeset)
++{
++    (void)domain; (void)codeset;
++    return NULL;
++}
++EXPORT char* __xpg_strerror_r(int errnum, char* buf, size_t len)
++{
++    // bionic strerror_r is POSIX (int-returning) which is the XPG flavor
++    strerror_r(errnum, buf, len);
++    return buf; // box64 wrapper signature declares char* return
++}
++
++#endif // defined(ANDROID) && !defined(STATICBUILD)
++
+ #include "wrappedlib_init.h"

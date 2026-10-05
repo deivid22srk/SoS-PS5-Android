@@ -20,7 +20,7 @@ android {
         applicationId "br.deivid22srk.sosps5"
         minSdk 28
         targetSdk 28
-        versionCode 2
+        versionCode 3
         versionName "0.2.0-poc-m3"
 
         ndk {
